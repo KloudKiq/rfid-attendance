@@ -1,6 +1,14 @@
-# RFID Attendance KISS
+# RFID Attendance
 
-مشروع حضور موظفين محلي بسيط جدًا.
+مشروع حضور موظفين محلي بسيط — قارئ RFID USB + واجهة ويب.
+
+## Screenshots
+
+### شاشة المسح (Kiosk)
+![Kiosk](docs/kiosk.png)
+
+### لوحة الإدارة (Admin Panel)
+![Admin](docs/admin.png)
 
 ## التشغيل
 
@@ -11,13 +19,14 @@ npm start
 
 افتح:
 
-```text
-http://localhost:3000
+```
+http://localhost:3000        ← شاشة المسح
+http://localhost:3000/admin.html  ← لوحة الإدارة
 ```
 
 ## بيانات الإدارة الافتراضية
 
-```text
+```
 admin / admin123
 ```
 
@@ -27,8 +36,8 @@ admin / admin123
 ADMIN_USER=admin ADMIN_PASS=YourStrongPass npm start
 ```
 
-## طريقة العمل مع قارئ RFID USB Keyboard
+## طريقة العمل مع قارئ RFID USB
 
-- لتسجيل حضور/خروج: ضع المؤشر في خانة المسح ومرر البطاقة.
-- لتعريف موظف: سجل دخول كإدارة، ضع المؤشر في خانة رقم البطاقة ومرر البطاقة، ثم اكتب الاسم والمسمى.
-- قاعدة البيانات ستكون في ملف `attendance.db`.
+- **تسجيل حضور/خروج**: مرر البطاقة مباشرة — لا حاجة للنقر في أي مكان.
+- **تعريف موظف جديد**: افتح `/admin.html`، سجل دخول، ثم امسح البطاقة في خانة رقم البطاقة.
+- قاعدة البيانات: `attendance.db` (تُنشأ تلقائياً).
