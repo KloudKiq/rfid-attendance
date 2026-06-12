@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>لوحة الإدارة — حضور الموظفين</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f1f5f9;
+      min-height: 100vh;
+      color: #1e293b;
+    }
+
+    /* ── Login Screen ── */
+    #loginScreen {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+    }
+    .login-card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.3);
+      text-align: center;
+    }
+    .login-card .lock-icon { font-size: 48px; margin-bottom: 16px; display: block; }
+    .login-card h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; color: #0f172a; }
+    .login-card .sub { color: #64748b; font-size: 14px; margin-bottom: 32px; }
+    .login-field { text-align: right; margin-bottom: 16px; }
+    .login-field label { display: block; font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+    .login-field input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .login-field input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+    .btn-login {
+      width: 100%;
+      padding: 13px;
+      background: #1e3a5f;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background .2s, transform .1s;
+    }
+    .btn-login:hover { background: #2d527a; }
+    .btn-login:active { transform: scale(.98); }
+    #loginErr { color: #dc2626; font-size: 13px; margin-top: 12px; min-height: 20px; }
+    .back-link { display: block; margin-top: 20px; color: #94a3b8; font-size: 13px; text-decoration: none; }
+    .back-link:hover { color: #64748b; }
+
+    /* ── Admin App ── */
+    #adminApp { display: none; }
+
+    .site-header {
+      background: #1e3a5f;
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #162032;
+    }
+    .site-header .logo {
+      width: 36px; height: 36px;
+      background: #3b82f6;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .site-header h1 { color: #f1f5f9; font-size: 17px; font-weight: 600; }
+    .admin-name { color: #94a3b8; font-size: 13px; margin-right: auto; }
+    .btn-logout {
+      padding: 7px 16px;
+      background: rgba(239,68,68,.15);
+      color: #fca5a5;
+      border: 1px solid rgba(239,68,68,.3);
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .btn-logout:hover { background: rgba(239,68,68,.25); }
+
+    .main { max-width: 960px; margin: 0 auto; padding: 28px 20px; }
+
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+    }
+    .card h3 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card h3 .icon { font-size: 17px; }
+
+    .field-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+    .field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 150px; }
+    .field label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .5px; }
+    .field input {
+      padding: 9px 13px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color .2s;
+      width: 100%;
+    }
+    .field input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+
+    .btn {
+      padding: 9px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter .15s, transform .1s;
+      white-space: nowrap;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn:hover { filter: brightness(1.08); }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-success { background: #22c55e; color: #fff; }
+    .btn-ghost   { background: #f1f5f9; color: #475569; }
+    .btn-sm { padding: 6px 13px; font-size: 12px; }
+
+    .inline-msg { font-size: 13px; font-weight: 600; margin-top: 10px; }
+    .ok  { color: #16a34a; }
+    .err { color: #dc2626; }
+
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th { background: #f8fafc; color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding: 10px 12px; border-bottom: 2px solid #e2e8f0; text-align: right; }
+    td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .badge-in  { background: #dcfce7; color: #16a34a; }
+    .badge-out { background: #fee2e2; color: #dc2626; }
+
+    .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; }
+    .tab {
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color .15s, border-color .15s;
+    }
+    .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+  </style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="loginScreen">
+  <div class="login-card">
+    <span class="lock-icon">🔐</span>
+    <h2>دخول الإدارة</h2>
+    <p class="sub">صلاحية محدودة للمدراء</p>
+    <div class="login-field">
+      <label>اسم المستخدم</label>
+      <input id="user" type="text" placeholder="username" value="admin">
+    </div>
+    <div class="login-field">
+      <label>كلمة المرور</label>
+      <input id="pass" type="password" placeholder="••••••••" value="admin123">
+    </div>
+    <button class="btn-login" onclick="login()">دخول</button>
+    <div id="loginErr"></div>
+    <a href="/" class="back-link">← العودة للصفحة الرئيسية</a>
+  </div>
+</div>
+
+<!-- Admin App -->
+<div id="adminApp">
+  <header class="site-header">
+    <div class="logo">⚙️</div>
+    <h1>لوحة الإدارة</h1>
+    <span class="admin-name" id="adminName"></span>
+    <button class="btn-logout" onclick="logout()">خروج</button>
+  </header>
+
+  <div class="main">
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('employees')">👥 الموظفون</div>
+      <div class="tab" onclick="switchTab('today')">📅 حركات اليوم</div>
+    </div>
+
+    <!-- Employees Tab -->
+    <div class="tab-panel active" id="tab-employees">
+      <div class="card">
+        <h3><span class="icon">➕</span> تعريف موظف جديد</h3>
+        <div class="field-row">
+          <div class="field">
+            <label>رقم البطاقة</label>
+            <input id="newCard" placeholder="امسح البطاقة أو أدخل يدوياً">
+          </div>
+          <div class="field">
+            <label>الاسم</label>
+            <input id="newName" placeholder="اسم الموظف">
+          </div>
+          <div class="field">
+            <label>المسمى الوظيفي</label>
+            <input id="newTitle" placeholder="المسمى الوظيفي">
+          </div>
+          <button class="btn btn-success" onclick="addEmployee()">إضافة</button>
+        </div>
+        <div id="addMsg" class="inline-msg"></div>
+      </div>
+
+      <div class="card">
+        <h3><span class="icon">👥</span> قائمة الموظفين</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>الاسم</th><th>المسمى</th><th>رقم البطاقة</th><th>تاريخ التسجيل</th></tr></thead>
+            <tbody id="employees"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Today Tab -->
+    <div class="tab-panel" id="tab-today">
+      <div class="card">
+        <h3>
+          <span class="icon">📅</span> حركات اليوم
+          <button class="btn btn-ghost btn-sm" style="margin-right:auto" onclick="loadToday()">تحديث</button>
+        </h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>الموظف</th><th>المسمى</th><th>النوع</th><th>الوقت</th></tr></thead>
+            <tbody id="today"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+async function api(url, data) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(data || {})
+  });
+  const json = await res.json();
+  if (!res.ok) throw json;
+  return json;
+}
+
+// Check existing session on load
+(async () => {
+  const res = await fetch("/api/me");
+  const data = await res.json();
+  if (data.loggedIn) showAdmin(data.admin.username);
+})();
+
+async function login() {
+  $("loginErr").textContent = "";
+  try {
+    const r = await api("/api/login", { username: $("user").value, password: $("pass").value });
+    showAdmin(r.username);
+  } catch (e) {
+    $("loginErr").textContent = e.error || "فشل الدخول";
+  }
+}
+
+$("pass").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+
+function showAdmin(username) {
+  $("loginScreen").style.display = "none";
+  $("adminApp").style.display = "block";
+  $("adminName").textContent = username;
+  loadEmployees();
+  loadToday();
+}
+
+async function logout() {
+  await api("/api/logout");
+  location.reload();
+}
+
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach((t, i) => t.classList.toggle("active", ["employees","today"][i] === name));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  $("tab-" + name).classList.add("active");
+}
+
+$("newCard").addEventListener("keydown", e => { if (e.key === "Enter") $("newName").focus(); });
+$("newName").addEventListener("keydown", e => { if (e.key === "Enter") $("newTitle").focus(); });
+$("newTitle").addEventListener("keydown", e => { if (e.key === "Enter") addEmployee(); });
+
+async function addEmployee() {
+  try {
+    await api("/api/employees", {
+      card_id: $("newCard").value.trim(),
+      name: $("newName").value.trim(),
+      title: $("newTitle").value.trim()
+    });
+    $("addMsg").innerHTML = `<span class="ok">✓ تمت إضافة الموظف</span>`;
+    $("newCard").value = $("newName").value = $("newTitle").value = "";
+    $("newCard").focus();
+    loadEmployees();
+  } catch (e) {
+    $("addMsg").innerHTML = `<span class="err">${e.error || "خطأ"}</span>`;
+  }
+}
+
+async function loadEmployees() {
+  const res = await fetch("/api/employees");
+  const rows = await res.json();
+  $("employees").innerHTML = rows.length
+    ? rows.map(e => `<tr>
+        <td>${e.name}</td>
+        <td>${e.title || "—"}</td>
+        <td style="font-family:monospace;font-size:13px">${e.card_id}</td>
+        <td style="color:#94a3b8;font-size:13px">${e.created_at}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">لا يوجد موظفون بعد</td></tr>`;
+}
+
+async function loadToday() {
+  const res = await fetch("/api/today");
+  const rows = await res.json();
+  $("today").innerHTML = rows.length
+    ? rows.map(r => `<tr>
+        <td>${r.name}</td>
+        <td style="color:#64748b;font-size:13px">${r.title || "—"}</td>
+        <td><span class="badge ${r.type === "IN" ? "badge-in" : "badge-out"}">${r.type === "IN" ? "دخول" : "خروج"}</span></td>
+        <td style="color:#64748b;font-size:13px">${r.created_at}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">لا توجد حركات اليوم</td></tr>`;
+}
+</script>
+</body>
+</html>
