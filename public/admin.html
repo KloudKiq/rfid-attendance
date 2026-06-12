@@ -185,6 +185,45 @@
     .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
+
+    /* ── Report ── */
+    .report-controls { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:20px; }
+    .report-controls select {
+      padding: 9px 13px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      background: #fff;
+      cursor: pointer;
+    }
+    .report-controls select:focus { border-color:#3b82f6; }
+    .emp-report-block { margin-bottom:24px; }
+    .emp-report-header {
+      display:flex; align-items:center; justify-content:space-between;
+      background:#f8fafc; padding:10px 14px; border-radius:8px;
+      margin-bottom:8px; border:1px solid #e2e8f0;
+    }
+    .emp-report-header .emp-name { font-weight:700; font-size:15px; }
+    .emp-report-header .emp-meta { color:#64748b; font-size:13px; }
+    .emp-report-header .days-badge {
+      background:#3b82f6; color:#fff; border-radius:999px;
+      padding:3px 12px; font-size:13px; font-weight:700;
+    }
+    .day-row { display:grid; grid-template-columns:120px 1fr 1fr; gap:8px; padding:7px 14px; border-bottom:1px solid #f1f5f9; font-size:13px; }
+    .day-row:last-child { border-bottom:none; }
+    .day-label { color:#475569; font-weight:600; }
+    .time-in  { color:#16a34a; }
+    .time-out { color:#dc2626; }
+    .no-out   { color:#94a3b8; font-style:italic; }
+
+    @media print {
+      .site-header, .tabs, .report-controls, .no-print { display:none !important; }
+      body { background:#fff; }
+      .card { box-shadow:none; border:1px solid #e2e8f0; }
+      #tab-reports { display:block !important; }
+      .tab-panel { display:block !important; }
+    }
   </style>
 </head>
 <body>
@@ -223,6 +262,7 @@
     <div class="tabs">
       <div class="tab active" onclick="switchTab('employees')">👥 الموظفون</div>
       <div class="tab" onclick="switchTab('today')">📅 حركات اليوم</div>
+      <div class="tab" onclick="switchTab('reports')">📊 التقارير الشهرية</div>
     </div>
 
     <!-- Employees Tab -->
@@ -274,6 +314,27 @@
       </div>
     </div>
 
+    <!-- Reports Tab -->
+    <div class="tab-panel" id="tab-reports">
+      <div class="card">
+        <h3><span class="icon">📊</span> التقرير الشهري</h3>
+        <div class="report-controls no-print">
+          <div class="field" style="flex:0 0 auto">
+            <label>الشهر</label>
+            <select id="rMonth"></select>
+          </div>
+          <div class="field" style="flex:0 0 auto">
+            <label>السنة</label>
+            <select id="rYear"></select>
+          </div>
+          <button class="btn btn-primary" onclick="loadReport()">عرض التقرير</button>
+          <button class="btn btn-ghost" onclick="exportCSV()">تصدير CSV</button>
+          <button class="btn btn-ghost" onclick="window.print()">طباعة / PDF</button>
+        </div>
+        <div id="reportOut"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -316,6 +377,7 @@ function showAdmin(username) {
   $("adminName").textContent = username;
   loadEmployees();
   loadToday();
+  initReportSelects();
 }
 
 async function logout() {
@@ -324,7 +386,7 @@ async function logout() {
 }
 
 function switchTab(name) {
-  document.querySelectorAll(".tab").forEach((t, i) => t.classList.toggle("active", ["employees","today"][i] === name));
+  document.querySelectorAll(".tab").forEach((t, i) => t.classList.toggle("active", ["employees","today","reports"][i] === name));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   $("tab-" + name).classList.add("active");
 }
@@ -360,6 +422,74 @@ async function loadEmployees() {
         <td style="color:#94a3b8;font-size:13px">${e.created_at}</td>
       </tr>`).join("")
     : `<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">لا يوجد موظفون بعد</td></tr>`;
+}
+
+// ── Reports ──────────────────────────────────────────────────────────────
+let reportData = null;
+
+function initReportSelects() {
+  const now = new Date();
+  const months = [
+    ["01","يناير"],["02","فبراير"],["03","مارس"],["04","أبريل"],
+    ["05","مايو"],["06","يونيو"],["07","يوليو"],["08","أغسطس"],
+    ["09","سبتمبر"],["10","أكتوبر"],["11","نوفمبر"],["12","ديسمبر"]
+  ];
+  const mSel = document.getElementById("rMonth");
+  const ySel = document.getElementById("rYear");
+  mSel.innerHTML = months.map(([v,l]) =>
+    `<option value="${v}"${v === String(now.getMonth()+1).padStart(2,"0") ? " selected" : ""}>${l}</option>`
+  ).join("");
+  for (let y = now.getFullYear(); y >= 2020; y--) {
+    ySel.innerHTML += `<option value="${y}"${y === now.getFullYear() ? " selected" : ""}>${y}</option>`;
+  }
+}
+
+async function loadReport() {
+  const month = document.getElementById("rMonth").value;
+  const year  = document.getElementById("rYear").value;
+  const res   = await api(`/api/reports/monthly?year=${year}&month=${month}`);
+  reportData  = res;
+  renderReport(res);
+}
+
+function renderReport(data) {
+  const out = document.getElementById("reportOut");
+  if (!data.employees.length) {
+    out.innerHTML = `<p style="color:#94a3b8;text-align:center;padding:24px">لا توجد بيانات لهذا الشهر</p>`;
+    return;
+  }
+  out.innerHTML = data.employees.map(emp => `
+    <div class="emp-report-block">
+      <div class="emp-report-header">
+        <div>
+          <span class="emp-name">${emp.name}</span>
+          ${emp.title ? `<span style="color:#64748b;font-size:13px;margin-right:8px">${emp.title}</span>` : ""}
+        </div>
+        <div class="emp-meta" style="font-family:monospace">${emp.card_id}</div>
+        <div class="days-badge">${emp.total_days} يوم</div>
+      </div>
+      ${emp.days.map(d => `
+        <div class="day-row">
+          <span class="day-label">${d.day}</span>
+          <span class="time-in">▲ ${d.first_in || "—"}</span>
+          <span class="${d.last_out ? "time-out" : "no-out"}">▼ ${d.last_out || "لم يسجّل خروج"}</span>
+        </div>`).join("")}
+    </div>`).join("");
+}
+
+function exportCSV() {
+  if (!reportData) return;
+  const rows = [["الاسم","المسمى","الكارت","اليوم","أول دخول","آخر خروج"]];
+  for (const emp of reportData.employees) {
+    for (const d of emp.days) {
+      rows.push([emp.name, emp.title||"", emp.card_id, d.day, d.first_in||"", d.last_out||""]);
+    }
+  }
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = "data:text/csv;charset=utf-8,\uFEFF" + encodeURIComponent(csv);
+  a.download = `report-${reportData.year}-${reportData.month}.csv`;
+  a.click();
 }
 
 async function loadToday() {

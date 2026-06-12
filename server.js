@@ -121,6 +121,46 @@ app.post("/api/check", (req, res) => {
   });
 });
 
+app.get("/api/reports/monthly", requireAuth, (req, res) => {
+  const year  = String(req.query.year  || new Date().getFullYear()).padStart(4, "0");
+  const month = String(req.query.month || new Date().getMonth() + 1).padStart(2, "0");
+
+  // One row per employee per day: earliest IN and latest OUT
+  const days = db.prepare(`
+    SELECT
+      e.id          AS emp_id,
+      e.name,
+      e.title,
+      e.card_id,
+      date(a.created_at, 'localtime')                                        AS day,
+      MIN(CASE WHEN a.type='IN'  THEN time(a.created_at,'localtime') END)   AS first_in,
+      MAX(CASE WHEN a.type='OUT' THEN time(a.created_at,'localtime') END)   AS last_out
+    FROM attendance a
+    JOIN employees e ON e.id = a.employee_id
+    WHERE strftime('%Y', a.created_at, 'localtime') = ?
+      AND strftime('%m', a.created_at, 'localtime') = ?
+    GROUP BY e.id, day
+    ORDER BY e.name, day
+  `).all(year, month);
+
+  // Roll up into per-employee summary
+  const map = new Map();
+  for (const r of days) {
+    if (!map.has(r.emp_id)) {
+      map.set(r.emp_id, { emp_id: r.emp_id, name: r.name, title: r.title, card_id: r.card_id, days: [] });
+    }
+    map.get(r.emp_id).days.push({ day: r.day, first_in: r.first_in, last_out: r.last_out });
+  }
+
+  res.json({
+    year, month,
+    employees: [...map.values()].map(e => ({
+      ...e,
+      total_days: e.days.length
+    }))
+  });
+});
+
 app.get("/api/today", requireAuth, (req, res) => {
   const rows = db.prepare(`
     SELECT a.id, e.name, e.title, e.card_id, a.type, a.created_at
