@@ -106,7 +106,7 @@
 
     /* ── Scan message ── */
     #scanMsg { margin-top: 20px; min-height: 56px; }
-    .msg-ok, .msg-err {
+    .msg-err {
       padding: 14px 24px;
       border-radius: 12px;
       font-size: 18px;
@@ -115,10 +115,65 @@
       align-items: center;
       gap: 10px;
       animation: fadeIn .3s ease;
+      background: rgba(239,68,68,.15);
+      color: #fca5a5;
+      border: 1px solid rgba(239,68,68,.3);
     }
-    .msg-ok  { background: rgba(34,197,94,.15);  color: #86efac; border: 1px solid rgba(34,197,94,.3); }
-    .msg-err { background: rgba(239,68,68,.15);  color: #fca5a5; border: 1px solid rgba(239,68,68,.3); }
     @keyframes fadeIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+
+    /* ── Greeting card ── */
+    .greeting-card {
+      border-radius: 20px;
+      padding: 32px 28px;
+      text-align: center;
+      animation: greetIn .35s cubic-bezier(.22,1,.36,1);
+      border: 1px solid;
+    }
+    @keyframes greetIn {
+      from { opacity:0; transform:scale(.92) translateY(12px); }
+      to   { opacity:1; transform:scale(1)   translateY(0); }
+    }
+    .greeting-card.in-card {
+      background: rgba(34,197,94,.12);
+      border-color: rgba(34,197,94,.35);
+    }
+    .greeting-card.out-card {
+      background: rgba(251,191,36,.10);
+      border-color: rgba(251,191,36,.35);
+    }
+    .greeting-card .greet-line {
+      font-size: 15px;
+      font-weight: 500;
+      margin-bottom: 10px;
+      letter-spacing: .3px;
+    }
+    .greeting-card.in-card  .greet-line { color: #86efac; }
+    .greeting-card.out-card .greet-line { color: #fde68a; }
+    .greeting-card .emp-name {
+      font-size: 32px;
+      font-weight: 800;
+      margin: 6px 0 14px;
+      line-height: 1.1;
+    }
+    .greeting-card.in-card  .emp-name { color: #4ade80; }
+    .greeting-card.out-card .emp-name { color: #fbbf24; }
+    .greeting-card .type-badge {
+      display: inline-block;
+      padding: 5px 18px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .greeting-card.in-card  .type-badge { background: rgba(34,197,94,.25); color: #86efac; }
+    .greeting-card.out-card .type-badge { background: rgba(251,191,36,.25); color: #fde68a; }
+    .greeting-card .scan-time {
+      font-size: 13px;
+      opacity: .65;
+      margin-top: 6px;
+    }
+    .greeting-card.in-card  .scan-time { color: #86efac; }
+    .greeting-card.out-card .scan-time { color: #fde68a; }
 
     /* ── Card panel ── */
     .card {
@@ -233,14 +288,30 @@
 <script>
 const $ = id => document.getElementById(id);
 
-const ADMIN_INPUT_IDS = new Set([]);
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// How long to wait (ms) after the last character before treating the buffer
+// as complete. Most HID RFID readers emit a full card ID in <50ms, but cheap
+// readers or busy USB hubs can have inter-character gaps up to 200ms.
+// 300ms is safe for all known readers while still blocking human typing speed.
+const SCAN_TIMEOUT_MS = 300;
 
 let scanBuffer = "";
-let scanTimer = null;
+let scanTimer  = null;
+let isChecking = false;  // in-flight lock — prevents concurrent POSTs
+let msgTimer   = null;   // ref to message-clear timeout so we can cancel it
 
 document.addEventListener("keydown", e => {
   const active = document.activeElement;
-  if (active && ADMIN_INPUT_IDS.has(active.id)) return;
+  // Skip capture if focus is inside any element marked as an admin input
+  if (active && active.closest("[data-admin-input]")) return;
 
   if (e.key === "Enter") {
     const card = scanBuffer.trim();
@@ -263,16 +334,22 @@ document.addEventListener("keydown", e => {
       scanBuffer = "";
       $("scanCard").value = "";
       $("scanCard").classList.remove("scanning");
-    }, 500);
+    }, SCAN_TIMEOUT_MS);
     e.preventDefault();
   }
 });
 
+// Restore capture focus after any click that isn't an admin input or button
 document.addEventListener("click", e => {
-  if (!ADMIN_INPUT_IDS.has(e.target?.id) && e.target?.tagName !== "BUTTON") {
+  if (!e.target?.closest("[data-admin-input]") && e.target?.tagName !== "BUTTON") {
     $("scanCard").focus();
   }
 });
+
+// Restore capture focus when the window regains focus after OS interrupts
+// (alt-tab, lock screen, notifications). Without this the first post-interrupt
+// scan is silently dropped.
+window.addEventListener("focus", () => $("scanCard").focus());
 
 async function api(url, data) {
   const res = await fetch(url, {
@@ -285,21 +362,53 @@ async function api(url, data) {
   return json;
 }
 
+function timeGreeting() {
+  const h = new Date().getHours();
+  if (h >= 5  && h < 12) return "صباح الخير";
+  if (h >= 12 && h < 17) return "مساء الخير";
+  if (h >= 17 && h < 21) return "مساء النور";
+  return "أهلاً";
+}
+
 async function check() {
+  if (isChecking) return;  // drop scan while a request is already in-flight
+  isChecking = true;
+
   const card = $("scanCard").value.trim();
   $("scanCard").value = "";
   $("scanCard").classList.remove("scanning");
   scanBuffer = "";
+
+  // Cancel any pending message-clear from a previous scan
+  clearTimeout(msgTimer);
+
   try {
     const r = await api("/api/check", { card_id: card });
-    const typeLabel = r.type === "IN" ? "✅ دخول" : "🚪 خروج";
-    $("scanMsg").innerHTML =
-      `<div class="msg-ok">${typeLabel} — ${r.employee.name} — ${r.time}</div>`;
+    const isIn   = r.type === "IN";
+    const cls    = isIn ? "in-card" : "out-card";
+    const icon   = isIn ? "✅" : "🚪";
+    const label  = isIn ? "تسجيل دخول" : "تسجيل خروج";
+    const phrase = isIn
+      ? `${timeGreeting()}،`
+      : "إلى اللقاء،";
+    $("scanMsg").innerHTML = `
+      <div class="greeting-card ${cls}">
+        <div class="greet-line">${phrase}</div>
+        <div class="emp-name">${esc(r.employee.name)}</div>
+        <span class="type-badge">${icon} ${label}</span>
+        <div class="scan-time">${esc(r.time)}</div>
+      </div>`;
   } catch (e) {
+    // Distinguish server-down (TypeError: network failure) from app errors
+    const msg = e instanceof TypeError
+      ? "الشبكة غير متاحة"
+      : (e.error || "خطأ");
     $("scanMsg").innerHTML =
-      `<div class="msg-err">⚠️ ${e.error || "خطأ"}${e.card_id ? " — البطاقة: " + e.card_id : ""}</div>`;
+      `<div class="msg-err">⚠️ ${msg}${e.card_id ? " — البطاقة: " + e.card_id : ""}</div>`;
+  } finally {
+    isChecking = false;
+    msgTimer = setTimeout(() => { $("scanMsg").innerHTML = ""; }, 5000);
   }
-  setTimeout(() => { $("scanMsg").innerHTML = ""; }, 5000);
 }
 
 </script>

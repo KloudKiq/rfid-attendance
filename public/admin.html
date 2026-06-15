@@ -187,42 +187,225 @@
     .tab-panel.active { display: block; }
 
     /* ── Report ── */
-    .report-controls { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:20px; }
-    .report-controls select {
+    .report-controls { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:12px; }
+    .report-controls select,
+    .report-controls input[type="date"],
+    .report-controls input[type="text"] {
       padding: 9px 13px;
       border: 1.5px solid #e2e8f0;
       border-radius: 8px;
       font-size: 14px;
       outline: none;
       background: #fff;
-      cursor: pointer;
+      width: 100%;
     }
-    .report-controls select:focus { border-color:#3b82f6; }
+    .report-controls select:focus,
+    .report-controls input[type="date"]:focus,
+    .report-controls input[type="text"]:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.1); }
+
+    /* Quick preset pills */
+    .preset-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+    .preset-btn {
+      padding: 5px 14px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #475569;
+      background: #f8fafc;
+      cursor: pointer;
+      transition: background .15s, border-color .15s, color .15s;
+      white-space: nowrap;
+    }
+    .preset-btn:hover { background:#e2e8f0; }
+    .preset-btn.active { background:#3b82f6; border-color:#3b82f6; color:#fff; }
+
+    /* Employee autocomplete */
+    .autocomplete-wrap { position: relative; width: 100%; }
+    .emp-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 0; left: 0;
+      background: #fff;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 100;
+      box-shadow: 0 4px 16px rgba(0,0,0,.1);
+    }
+    .emp-dropdown.hidden { display: none; }
+    .emp-option {
+      padding: 9px 14px;
+      font-size: 14px;
+      cursor: pointer;
+      color: #334155;
+    }
+    .emp-option:hover, .emp-option.focused { background: #f1f5f9; }
+    .emp-option .emp-opt-title { font-size: 11px; color: #94a3b8; display:block; }
     .emp-report-block { margin-bottom:24px; }
     .emp-report-header {
       display:flex; align-items:center; justify-content:space-between;
+      direction: rtl;
       background:#f8fafc; padding:10px 14px; border-radius:8px;
       margin-bottom:8px; border:1px solid #e2e8f0;
+      gap: 8px;
     }
     .emp-report-header .emp-name { font-weight:700; font-size:15px; }
-    .emp-report-header .emp-meta { color:#64748b; font-size:13px; }
+    .emp-report-header .emp-meta { color:#64748b; font-size:13px; font-family:monospace; }
     .emp-report-header .days-badge {
       background:#3b82f6; color:#fff; border-radius:999px;
       padding:3px 12px; font-size:13px; font-weight:700;
+      white-space:nowrap;
     }
-    .day-row { display:grid; grid-template-columns:120px 1fr 1fr; gap:8px; padding:7px 14px; border-bottom:1px solid #f1f5f9; font-size:13px; }
+    .day-row { display:grid; grid-template-columns:120px 1fr 1fr; gap:8px; padding:7px 14px; border-bottom:1px solid #f1f5f9; font-size:13px; direction: rtl; }
     .day-row:last-child { border-bottom:none; }
-    .day-label { color:#475569; font-weight:600; }
-    .time-in  { color:#16a34a; }
-    .time-out { color:#dc2626; }
-    .no-out   { color:#94a3b8; font-style:italic; }
+    .day-label { color:#475569; font-weight:600; text-align:right; }
+    .time-in  { color:#16a34a; text-align:center; }
+    .time-out { color:#dc2626; text-align:left; }
+    .no-out   { color:#94a3b8; font-style:italic; text-align:left; }
+
+    /* ── Print header (hidden on screen, shown only when printing) ── */
+    #printHeader {
+      display: none;
+    }
 
     @media print {
-      .site-header, .tabs, .report-controls, .no-print { display:none !important; }
-      body { background:#fff; }
-      .card { box-shadow:none; border:1px solid #e2e8f0; }
-      #tab-reports { display:block !important; }
-      .tab-panel { display:block !important; }
+      /* Hide everything that isn't the report */
+      .site-header,
+      .tabs,
+      .report-controls,
+      .no-print,
+      #tab-employees,
+      #tab-today,
+      #loginScreen       { display: none !important; }
+
+      /* Reset page chrome */
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body  { background: #fff; font-size: 12pt; color: #000; direction: rtl; }
+      .main { padding: 0; max-width: 100%; }
+
+      /* Show only the reports tab */
+      #tab-reports        { display: block !important; }
+      .tab-panel          { display: none !important; }
+      #tab-reports.tab-panel { display: block !important; }
+
+      /* Strip card chrome */
+      .card {
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+      }
+      .card h3 { display: none; }
+
+      /* Print header */
+      #printHeader {
+        display: block;
+        text-align: center;
+        border-bottom: 2pt solid #000;
+        padding-bottom: 10pt;
+        margin-bottom: 16pt;
+      }
+      #printHeader .ph-title {
+        font-size: 16pt;
+        font-weight: 700;
+        direction: rtl;
+      }
+      #printHeader .ph-sub {
+        font-size: 11pt;
+        margin-top: 4pt;
+        color: #333;
+        direction: rtl;
+      }
+      #printHeader .ph-meta {
+        font-size: 10pt;
+        color: #555;
+        margin-top: 4pt;
+        direction: rtl;
+      }
+
+      /* Employee blocks */
+      .emp-report-block {
+        page-break-inside: avoid;
+        break-inside: avoid;
+        margin-bottom: 16pt;
+      }
+      .emp-report-block + .emp-report-block {
+        page-break-before: auto;
+        break-before: auto;
+        border-top: 1px solid #ccc;
+        padding-top: 12pt;
+      }
+
+      /* Employee header row */
+      .emp-report-header {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        direction: rtl;
+        background: none !important;
+        border: none !important;
+        border-bottom: 1.5pt solid #000 !important;
+        border-radius: 0 !important;
+        padding: 0 0 5pt 0 !important;
+        margin-bottom: 4pt !important;
+        gap: 8pt;
+      }
+      .emp-report-header > div:first-child {
+        display: flex;
+        align-items: center;
+        gap: 6pt;
+      }
+      .emp-report-header .emp-name {
+        font-size: 12pt;
+        font-weight: 700;
+      }
+      .emp-report-header .emp-meta {
+        font-size: 9pt;
+        color: #333;
+        font-family: monospace;
+      }
+      .emp-report-header .days-badge {
+        background: none !important;
+        color: #000 !important;
+        border: 1pt solid #000;
+        font-size: 9pt;
+        font-weight: 700;
+        padding: 1pt 6pt;
+        border-radius: 0;
+        white-space: nowrap;
+      }
+
+      /* Day rows */
+      .day-row {
+        display: grid !important;
+        grid-template-columns: 100pt 1fr 1fr;
+        direction: rtl;
+        padding: 3pt 0;
+        border-bottom: 0.5pt solid #ddd !important;
+        font-size: 10pt;
+        align-items: center;
+      }
+      .day-label {
+        color: #000;
+        font-weight: 600;
+        text-align: right;
+      }
+      .time-in {
+        color: #000;
+        text-align: center;
+      }
+      .time-out {
+        color: #000;
+        text-align: left;
+      }
+      .no-out {
+        color: #666;
+        font-style: italic;
+        text-align: left;
+      }
     }
   </style>
 </head>
@@ -317,20 +500,49 @@
     <!-- Reports Tab -->
     <div class="tab-panel" id="tab-reports">
       <div class="card">
-        <h3><span class="icon">📊</span> التقرير الشهري</h3>
+        <h3><span class="icon">📊</span> تقرير الحضور</h3>
+        <!-- Quick date presets -->
+        <div class="preset-row no-print" id="presetRow">
+          <button class="preset-btn" onclick="applyPreset('today')">اليوم</button>
+          <button class="preset-btn" onclick="applyPreset('week')">آخر 7 أيام</button>
+          <button class="preset-btn active" onclick="applyPreset('month')">هذا الشهر</button>
+          <button class="preset-btn" onclick="applyPreset('last30')">آخر 30 يوم</button>
+          <button class="preset-btn" onclick="applyPreset('lastMonth')">الشهر الماضي</button>
+          <button class="preset-btn" onclick="applyPreset('q3months')">آخر 3 أشهر</button>
+          <button class="preset-btn" onclick="applyPreset('ytd')">من بداية السنة</button>
+        </div>
+
         <div class="report-controls no-print">
           <div class="field" style="flex:0 0 auto">
-            <label>الشهر</label>
-            <select id="rMonth"></select>
+            <label>من تاريخ</label>
+            <input type="date" id="rFrom" onchange="clearPreset()">
           </div>
           <div class="field" style="flex:0 0 auto">
-            <label>السنة</label>
-            <select id="rYear"></select>
+            <label>إلى تاريخ</label>
+            <input type="date" id="rTo" onchange="clearPreset()">
+          </div>
+          <div class="field" style="flex:0 0 auto;min-width:200px">
+            <label>الموظف</label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="rEmpSearch" placeholder="جميع الموظفين — ابحث..." autocomplete="off"
+                     oninput="filterEmpDropdown()" onfocus="openEmpDropdown()" onblur="closeEmpDropdown()"
+                     onkeydown="empDropdownKey(event)">
+              <input type="hidden" id="rEmpId">
+              <div id="rEmpDropdown" class="emp-dropdown hidden"></div>
+            </div>
           </div>
           <button class="btn btn-primary" onclick="loadReport()">عرض التقرير</button>
           <button class="btn btn-ghost" onclick="exportCSV()">تصدير CSV</button>
-          <button class="btn btn-ghost" onclick="window.print()">طباعة / PDF</button>
+          <button class="btn btn-ghost no-print" onclick="printReport()">طباعة / PDF</button>
         </div>
+
+        <!-- Visible only when printing — populated by renderReport() -->
+        <div id="printHeader">
+          <div class="ph-title">تقرير الحضور الشهري — نظام الحضور RFID</div>
+          <div class="ph-sub" id="phPeriod"></div>
+          <div class="ph-meta" id="phMeta"></div>
+        </div>
+
         <div id="reportOut"></div>
       </div>
     </div>
@@ -341,12 +553,30 @@
 <script>
 const $ = id => document.getElementById(id);
 
+// Escape HTML special chars before inserting user data into innerHTML
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 async function api(url, data) {
   const res = await fetch(url, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify(data || {})
   });
+  const json = await res.json();
+  if (!res.ok) throw json;
+  return json;
+}
+
+async function apiGet(url) {
+  const res = await fetch(url);
+  if (res.status === 401) { location.reload(); return null; }
   const json = await res.json();
   if (!res.ok) throw json;
   return json;
@@ -371,13 +601,14 @@ async function login() {
 
 $("pass").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
 
-function showAdmin(username) {
+async function showAdmin(username) {
   $("loginScreen").style.display = "none";
   $("adminApp").style.display = "block";
   $("adminName").textContent = username;
-  loadEmployees();
+  initReportFilters();
+  const emps = await loadEmployees();
+  if (emps) await populateEmployeeSelect(emps);
   loadToday();
-  initReportSelects();
 }
 
 async function logout() {
@@ -405,54 +636,197 @@ async function addEmployee() {
     $("addMsg").innerHTML = `<span class="ok">✓ تمت إضافة الموظف</span>`;
     $("newCard").value = $("newName").value = $("newTitle").value = "";
     $("newCard").focus();
-    loadEmployees();
+    const updated = await loadEmployees();
+    if (updated) populateEmployeeSelect(updated);
   } catch (e) {
     $("addMsg").innerHTML = `<span class="err">${e.error || "خطأ"}</span>`;
   }
 }
 
 async function loadEmployees() {
-  const res = await fetch("/api/employees");
-  const rows = await res.json();
+  let rows;
+  try { rows = await apiGet("/api/employees"); } catch { return null; }
+  if (!rows) return null;
   $("employees").innerHTML = rows.length
     ? rows.map(e => `<tr>
-        <td>${e.name}</td>
-        <td>${e.title || "—"}</td>
-        <td style="font-family:monospace;font-size:13px">${e.card_id}</td>
-        <td style="color:#94a3b8;font-size:13px">${e.created_at}</td>
+        <td>${esc(e.name)}</td>
+        <td>${esc(e.title) || "—"}</td>
+        <td style="font-family:monospace;font-size:13px">${esc(e.card_id)}</td>
+        <td style="color:#94a3b8;font-size:13px">${esc(e.created_at)}</td>
       </tr>`).join("")
     : `<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">لا يوجد موظفون بعد</td></tr>`;
+  return rows;
 }
 
 // ── Reports ──────────────────────────────────────────────────────────────
-let reportData = null;
+let reportData  = null;
+let allEmployees = [];   // cache for autocomplete
 
-function initReportSelects() {
-  const now = new Date();
-  const months = [
-    ["01","يناير"],["02","فبراير"],["03","مارس"],["04","أبريل"],
-    ["05","مايو"],["06","يونيو"],["07","يوليو"],["08","أغسطس"],
-    ["09","سبتمبر"],["10","أكتوبر"],["11","نوفمبر"],["12","ديسمبر"]
-  ];
-  const mSel = document.getElementById("rMonth");
-  const ySel = document.getElementById("rYear");
-  mSel.innerHTML = months.map(([v,l]) =>
-    `<option value="${v}"${v === String(now.getMonth()+1).padStart(2,"0") ? " selected" : ""}>${l}</option>`
-  ).join("");
-  for (let y = now.getFullYear(); y >= 2020; y--) {
-    ySel.innerHTML += `<option value="${y}"${y === now.getFullYear() ? " selected" : ""}>${y}</option>`;
+// ── Date helpers ──────────────────────────────────────────────────────────
+function localISO(d) { return d.toLocaleDateString("sv"); }   // "sv" locale → YYYY-MM-DD
+
+function initReportFilters() {
+  applyPreset("month");   // default: this month
+}
+
+function applyPreset(key) {
+  const now     = new Date();
+  const y       = now.getFullYear();
+  const m       = now.getMonth();     // 0-based
+  let from, to;
+
+  switch (key) {
+    case "today":     from = to = localISO(now); break;
+    case "week": {
+      const d = new Date(now); d.setDate(d.getDate() - 6);
+      from = localISO(d); to = localISO(now); break;
+    }
+    case "month":
+      from = localISO(new Date(y, m, 1));
+      to   = localISO(now); break;
+    case "last30": {
+      const d = new Date(now); d.setDate(d.getDate() - 29);
+      from = localISO(d); to = localISO(now); break;
+    }
+    case "lastMonth":
+      from = localISO(new Date(y, m - 1, 1));
+      to   = localISO(new Date(y, m, 0)); break;
+    case "q3months": {
+      const d = new Date(now); d.setMonth(d.getMonth() - 3);
+      from = localISO(d); to = localISO(now); break;
+    }
+    case "ytd":
+      from = `${y}-01-01`; to = localISO(now); break;
+    default: return;
+  }
+
+  $("rFrom").value = from;
+  $("rTo").value   = to;
+
+  // Mark active preset button
+  document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+  const clicked = [...document.querySelectorAll(".preset-btn")]
+    .find(b => b.getAttribute("onclick") === `applyPreset('${key}')`);
+  if (clicked) clicked.classList.add("active");
+}
+
+function clearPreset() {
+  document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+}
+
+// ── Employee autocomplete ─────────────────────────────────────────────────
+function populateEmployeeSelect(employees) {
+  allEmployees = employees;
+  renderEmpDropdown(employees);
+}
+
+function renderEmpDropdown(list) {
+  $("rEmpDropdown").innerHTML = [
+    `<div class="emp-option" data-id="" data-name="جميع الموظفين">
+       جميع الموظفين
+     </div>`
+  ].concat(list.map(e =>
+    `<div class="emp-option" data-id="${e.id}" data-name="${esc(e.name)}">
+       ${esc(e.name)}
+       ${e.title ? `<span class="emp-opt-title">${esc(e.title)}</span>` : ""}
+     </div>`
+  )).join("");
+  // Attach click handlers
+  $("rEmpDropdown").querySelectorAll(".emp-option").forEach(el => {
+    el.addEventListener("mousedown", () => selectEmployee(el.dataset.id, el.dataset.name));
+  });
+}
+
+function filterEmpDropdown() {
+  clearPreset();
+  const q = $("rEmpSearch").value.trim().toLowerCase();
+  const filtered = q
+    ? allEmployees.filter(e => e.name.toLowerCase().includes(q))
+    : allEmployees;
+  renderEmpDropdown(filtered);
+  $("rEmpDropdown").classList.remove("hidden");
+}
+
+function openEmpDropdown() {
+  renderEmpDropdown(allEmployees);
+  $("rEmpDropdown").classList.remove("hidden");
+}
+
+function closeEmpDropdown() {
+  // Delay so mousedown on an option fires first
+  setTimeout(() => $("rEmpDropdown").classList.add("hidden"), 150);
+}
+
+function selectEmployee(id, name) {
+  $("rEmpId").value     = id;
+  $("rEmpSearch").value = id ? name : "";
+  $("rEmpDropdown").classList.add("hidden");
+}
+
+function empDropdownKey(e) {
+  const items = [...$("rEmpDropdown").querySelectorAll(".emp-option")];
+  const cur   = items.findIndex(el => el.classList.contains("focused"));
+  if (e.key === "ArrowDown") {
+    const next = Math.min(cur + 1, items.length - 1);
+    items.forEach(el => el.classList.remove("focused"));
+    items[next]?.classList.add("focused");
+    items[next]?.scrollIntoView({ block: "nearest" });
+    e.preventDefault();
+  } else if (e.key === "ArrowUp") {
+    const prev = Math.max(cur - 1, 0);
+    items.forEach(el => el.classList.remove("focused"));
+    items[prev]?.classList.add("focused");
+    items[prev]?.scrollIntoView({ block: "nearest" });
+    e.preventDefault();
+  } else if (e.key === "Enter" && cur >= 0) {
+    const el = items[cur];
+    selectEmployee(el.dataset.id, el.dataset.name);
+    e.preventDefault();
+  } else if (e.key === "Escape") {
+    $("rEmpDropdown").classList.add("hidden");
   }
 }
 
+// ── Load & render ─────────────────────────────────────────────────────────
 async function loadReport() {
-  const month = document.getElementById("rMonth").value;
-  const year  = document.getElementById("rYear").value;
-  const res   = await api(`/api/reports/monthly?year=${year}&month=${month}`);
-  reportData  = res;
+  const from  = $("rFrom").value;
+  const to    = $("rTo").value;
+  const empId = $("rEmpId").value;
+
+  if (!from || !to) { alert("حدد نطاق التاريخ"); return; }
+  if (from > to)    { alert("تاريخ البداية يجب أن يكون قبل تاريخ النهاية"); return; }
+
+  const params = new URLSearchParams({ from, to });
+  if (empId) params.set("employee_id", empId);
+
+  let res;
+  try { res = await apiGet(`/api/reports?${params}`); } catch { return; }
+  if (!res) return;
+  reportData = res;
   renderReport(res);
 }
 
+const MONTHS_AR = [
+  "","يناير","فبراير","مارس","أبريل","مايو","يونيو",
+  "يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"
+];
+
+function printReport() {
+  if (!reportData) {
+    alert("يرجى تحميل التقرير أولاً");
+    return;
+  }
+  window.print();
+}
+
 function renderReport(data) {
+  // Populate print header with current filter period and print timestamp
+  const empName = $("rEmpSearch").value.trim() || "جميع الموظفين";
+  $("phPeriod").textContent = `${data.from} — ${data.to} | ${empName}`;
+  $("phMeta").textContent =
+    `طُبع بتاريخ: ${new Date().toLocaleDateString("ar-SA", { year:"numeric", month:"long", day:"numeric" })}` +
+    ` — إجمالي الموظفين: ${data.employees.length}`;
+
   const out = document.getElementById("reportOut");
   if (!data.employees.length) {
     out.innerHTML = `<p style="color:#94a3b8;text-align:center;padding:24px">لا توجد بيانات لهذا الشهر</p>`;
@@ -462,17 +836,17 @@ function renderReport(data) {
     <div class="emp-report-block">
       <div class="emp-report-header">
         <div>
-          <span class="emp-name">${emp.name}</span>
-          ${emp.title ? `<span style="color:#64748b;font-size:13px;margin-right:8px">${emp.title}</span>` : ""}
+          <span class="emp-name">${esc(emp.name)}</span>
+          ${emp.title ? `<span style="color:#64748b;font-size:13px;margin-right:8px">${esc(emp.title)}</span>` : ""}
         </div>
-        <div class="emp-meta" style="font-family:monospace">${emp.card_id}</div>
-        <div class="days-badge">${emp.total_days} يوم</div>
+        <div class="emp-meta" style="font-family:monospace">${esc(emp.card_id)}</div>
+        <div class="days-badge">${esc(emp.total_days)} يوم</div>
       </div>
       ${emp.days.map(d => `
         <div class="day-row">
-          <span class="day-label">${d.day}</span>
-          <span class="time-in">▲ ${d.first_in || "—"}</span>
-          <span class="${d.last_out ? "time-out" : "no-out"}">▼ ${d.last_out || "لم يسجّل خروج"}</span>
+          <span class="day-label">${esc(d.day)}</span>
+          <span class="time-in">▲ ${esc(d.first_in) || "—"}</span>
+          <span class="${d.last_out ? "time-out" : "no-out"}">▼ ${esc(d.last_out) || "لم يسجّل خروج"}</span>
         </div>`).join("")}
     </div>`).join("");
 }
@@ -488,19 +862,20 @@ function exportCSV() {
   const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
   const a = document.createElement("a");
   a.href = "data:text/csv;charset=utf-8,\uFEFF" + encodeURIComponent(csv);
-  a.download = `report-${reportData.year}-${reportData.month}.csv`;
+  a.download = `report-${reportData.from}-to-${reportData.to}.csv`;
   a.click();
 }
 
 async function loadToday() {
-  const res = await fetch("/api/today");
-  const rows = await res.json();
+  let rows;
+  try { rows = await apiGet("/api/today"); } catch { return; }
+  if (!rows) return;
   $("today").innerHTML = rows.length
     ? rows.map(r => `<tr>
-        <td>${r.name}</td>
-        <td style="color:#64748b;font-size:13px">${r.title || "—"}</td>
+        <td>${esc(r.name)}</td>
+        <td style="color:#64748b;font-size:13px">${esc(r.title) || "—"}</td>
         <td><span class="badge ${r.type === "IN" ? "badge-in" : "badge-out"}">${r.type === "IN" ? "دخول" : "خروج"}</span></td>
-        <td style="color:#64748b;font-size:13px">${r.created_at}</td>
+        <td style="color:#64748b;font-size:13px">${esc(r.created_at)}</td>
       </tr>`).join("")
     : `<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">لا توجد حركات اليوم</td></tr>`;
 }
