@@ -3,6 +3,7 @@ import session from "express-session";
 import bcrypt from "bcryptjs";
 import Database from "better-sqlite3";
 import { hidAvailable, hidLoadError, listDevices, RFIDReader } from "./rfid-reader.js";
+import { serialAvailable, serialLoadError, listSerialPorts, SerialRFIDReader } from "./serial-reader.js";
 
 const app = express();
 const dbPath = process.env.DB_PATH || "attendance.db";
@@ -89,7 +90,12 @@ setInterval(() => {
   }
 }, 25000);
 
-// ── RFID reader ───────────────────────────────────────────────────────────
+// The kiosk enters "server mode" (auto-scan) whenever EITHER reader is active.
+function _broadcastReaderStatus() {
+  broadcastSSE({ type: 'status', active: reader.isOpen || serialReader.isOpen });
+}
+
+// ── RFID reader (HID keyboard-emulating) ──────────────────────────────────
 const reader = new RFIDReader();
 let _retryTimer = null;
 
@@ -100,21 +106,21 @@ reader.on('card', card_id => {
 
 reader.on('error', err => {
   console.error('RFID reader disconnected:', err.message);
-  broadcastSSE({ type: 'status', active: false });
+  _broadcastReaderStatus();
   _scheduleRetry();
 });
 
 function _openReader(vendorId, productId) {
   clearTimeout(_retryTimer);
   reader.open(vendorId, productId);
-  broadcastSSE({ type: 'status', active: true });
+  _broadcastReaderStatus();
   console.log(`RFID reader opened: VID=0x${vendorId.toString(16)} PID=0x${productId.toString(16)}`);
 }
 
 function _closeReader() {
   clearTimeout(_retryTimer);
   reader.close();
-  broadcastSSE({ type: 'status', active: false });
+  _broadcastReaderStatus();
 }
 
 function _scheduleRetry() {
@@ -130,13 +136,65 @@ function _scheduleRetry() {
   }, 5000);
 }
 
-// Auto-open saved reader on startup
+// ── RFID reader (serial / USB-CDC) ────────────────────────────────────────
+// Works server-side on macOS and Windows, where keyboard-type HID readers
+// cannot be opened (the OS seizes the keyboard device).
+const serialReader = new SerialRFIDReader();
+let _serialRetryTimer = null;
+
+serialReader.on('card', card_id => {
+  const result = processCard(card_id);
+  broadcastSSE({ type: 'scan', ...result });
+});
+
+serialReader.on('error', err => {
+  console.error('Serial RFID reader disconnected:', err.message);
+  _broadcastReaderStatus();
+  _scheduleSerialRetry();
+});
+
+// Returns the open Promise so callers (e.g. /api/serial/select) can await it.
+function _openSerial(path, baudRate) {
+  clearTimeout(_serialRetryTimer);
+  return serialReader.open(path, baudRate).then(() => {
+    _broadcastReaderStatus();
+    console.log(`Serial RFID reader opened: ${path} @ ${baudRate} baud`);
+  });
+}
+
+function _closeSerial() {
+  clearTimeout(_serialRetryTimer);
+  serialReader.close();
+  _broadcastReaderStatus();
+}
+
+function _scheduleSerialRetry() {
+  const path = getSetting('rfid_serial_path');
+  const baud = getSetting('rfid_serial_baud');
+  if (!path) return;
+  clearTimeout(_serialRetryTimer);
+  _serialRetryTimer = setTimeout(() => {
+    if (!serialReader.isOpen) {
+      _openSerial(path, +baud || 9600).catch(() => {});
+      _scheduleSerialRetry();
+    }
+  }, 5000);
+}
+
+// Auto-open saved readers on startup
 {
   const vid = getSetting('rfid_vendor_id');
   const pid = getSetting('rfid_product_id');
   if (vid && pid) {
     try { _openReader(+vid, +pid); }
     catch (e) { console.error('RFID auto-open failed:', e.message); _scheduleRetry(); }
+  }
+
+  const sPath = getSetting('rfid_serial_path');
+  const sBaud = getSetting('rfid_serial_baud');
+  if (sPath) {
+    _openSerial(sPath, +sBaud || 9600)
+      .catch(e => { console.error('Serial auto-open failed:', e.message); _scheduleSerialRetry(); });
   }
 }
 
@@ -170,7 +228,7 @@ function processCard(card_id) {
   return {
     ok: true, type: nextType,
     employee: { id: emp.id, name: emp.name, title: emp.title },
-    time: new Date().toLocaleString(), deduplicated: false
+    time: new Date().toLocaleString()
   };
 }
 
@@ -282,6 +340,46 @@ app.delete("/api/devices/select", requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Serial (USB-CDC) reader management ─────────────────────────────────────
+app.get("/api/serial/ports", requireAuth, async (req, res) => {
+  res.json({
+    available: serialAvailable,
+    loadError: serialLoadError || null,
+    ports:     await listSerialPorts(),
+  });
+});
+
+app.get("/api/serial/status", (req, res) => {
+  res.json({
+    available: serialAvailable,
+    active:    serialReader.isOpen,
+    path:      serialReader.path     ?? null,
+    baudRate:  serialReader.baudRate ?? null,
+  });
+});
+
+app.post("/api/serial/select", requireAuth, async (req, res) => {
+  const path     = String(req.body.path || "").trim();
+  const baudRate = req.body.baudRate != null ? parseInt(req.body.baudRate, 10) : 9600;
+  if (!path)                            return res.status(400).json({ error: "مسار المنفذ مطلوب" });
+  if (isNaN(baudRate) || baudRate <= 0) return res.status(400).json({ error: "معدل الباود غير صحيح" });
+  try {
+    await _openSerial(path, baudRate);
+    setSetting('rfid_serial_path', path);
+    setSetting('rfid_serial_baud', baudRate);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/serial/select", requireAuth, (req, res) => {
+  _closeSerial();
+  deleteSetting('rfid_serial_path');
+  deleteSetting('rfid_serial_baud');
+  res.json({ ok: true });
+});
+
 // ── SSE event stream ──────────────────────────────────────────────────────
 app.get("/api/events", (req, res) => {
   res.setHeader("Content-Type",  "text/event-stream");
@@ -290,7 +388,7 @@ app.get("/api/events", (req, res) => {
   res.flushHeaders();
 
   // Immediately push current reader status so the page knows the mode
-  res.write(`data: ${JSON.stringify({ type: 'status', active: reader.isOpen })}\n\n`);
+  res.write(`data: ${JSON.stringify({ type: 'status', active: reader.isOpen || serialReader.isOpen })}\n\n`);
 
   sseClients.add(res);
   req.on("close", () => sseClients.delete(res));

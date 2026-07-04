@@ -568,6 +568,56 @@
         </p>
       </div>
 
+      <!-- Serial (USB-CDC) reader card -->
+      <div class="card">
+        <h3><span class="icon">🔌</span> قارئ تسلسلي (Serial / COM)</h3>
+        <p style="font-size:13px;color:#64748b;margin-bottom:14px;line-height:1.7">
+          يقرأ الخادم البطاقات مباشرةً من قارئ يعمل بوضع المنفذ التسلسلي (USB-CDC / Virtual COM) —
+          يعمل على macOS و Windows دون الحاجة لإبقاء صفحة المسح مفتوحة.
+        </p>
+        <div id="serialStatus" style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+          <span id="serialDot" style="width:12px;height:12px;border-radius:50%;background:#94a3b8;flex-shrink:0"></span>
+          <span id="serialStatusText" style="font-size:14px;color:#64748b">جارٍ التحقق…</span>
+          <button class="btn btn-danger btn-sm" id="serialStopBtn" style="display:none;margin-right:auto" onclick="stopSerial()">⏹ إيقاف القارئ</button>
+        </div>
+        <div id="serialNotAvail" class="hidden"
+             style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 16px;font-size:13px;color:#991b1b;margin-bottom:12px">
+          <strong>⚠️ تعذّر تحميل serialport</strong><br>
+          <span id="serialErrMsg"></span><br><br>
+          الحلول المقترحة:
+          <ol style="margin:6px 0 0 18px;line-height:1.8">
+            <li>شغّل: <code style="background:#fee2e2;padding:1px 4px;border-radius:3px">npm rebuild serialport</code></li>
+            <li>أو أعد التثبيت: <code style="background:#fee2e2;padding:1px 4px;border-radius:3px">npm install serialport</code></li>
+            <li>ثم أعد تشغيل الخادم</li>
+          </ol>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn btn-ghost btn-sm" onclick="loadSerialPorts()">🔄 تحديث قائمة المنافذ</button>
+          <div class="field" style="flex:0 0 auto;min-width:120px">
+            <label>معدل الباود (Baud)</label>
+            <input id="serialBaud" type="number" value="9600" min="1" style="width:130px">
+          </div>
+        </div>
+        <div class="table-wrap" id="serialPortWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>المنفذ</th>
+                <th>الجهة المصنعة / الاسم</th>
+                <th style="font-family:monospace">VID:PID</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="serialPorts">
+              <tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">اضغط «تحديث» لرؤية المنافذ</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p id="serialEmptyMsg" class="hidden" style="color:#94a3b8;font-size:13px;margin-top:8px">
+          لا توجد منافذ تسلسلية — تأكد أن القارئ في وضع Serial/CDC وأنه متصل.
+        </p>
+      </div>
+
     </div>
 
     <!-- Reports Tab -->
@@ -687,6 +737,7 @@ async function showAdmin(username) {
   if (emps) await populateEmployeeSelect(emps);
   loadToday();
   loadDeviceStatus();
+  loadSerialStatus();
 }
 
 async function logout() {
@@ -699,7 +750,7 @@ function switchTab(name) {
     t.classList.toggle("active", ["employees","today","reports","rfid"][i] === name));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   $("tab-" + name).classList.add("active");
-  if (name === "rfid") { loadDeviceStatus(); loadDevices(); }
+  if (name === "rfid") { loadDeviceStatus(); loadDevices(); loadSerialStatus(); loadSerialPorts(); }
 }
 
 $("newCard").addEventListener("keydown", e => { if (e.key === "Enter") $("newName").focus(); });
@@ -1066,6 +1117,121 @@ async function stopDevice() {
     await fetch('/api/devices/select', { method: 'DELETE' });
     await loadDeviceStatus();
     await loadDevices();
+  } catch {}
+}
+
+// ── Serial (USB-CDC) Reader Management ─────────────────────────────────────
+let _selectedSerialPath = null;
+
+async function loadSerialStatus() {
+  let s;
+  try { s = await fetch('/api/serial/status').then(r => r.json()); } catch { return; }
+  updateSerialStatusUI(s);
+}
+
+function updateSerialStatusUI(s) {
+  const dot  = $("serialDot");
+  const txt  = $("serialStatusText");
+  const stop = $("serialStopBtn");
+  if (!s.available) {
+    dot.style.background = "#f59e0b";
+    txt.textContent = "serialport غير متاح";
+    stop.style.display = "none";
+    return;
+  }
+  if (s.active) {
+    dot.style.background = "#22c55e";
+    txt.textContent = `متصل — ${s.path} @ ${s.baudRate} باود`;
+    stop.style.display = "";
+    _selectedSerialPath = s.path;
+  } else {
+    dot.style.background = "#ef4444";
+    txt.textContent = "غير متصل — اختر منفذاً من القائمة";
+    stop.style.display = "none";
+    _selectedSerialPath = null;
+  }
+  highlightSelectedSerialPort();
+}
+
+async function loadSerialPorts() {
+  let data;
+  try { data = await apiGet('/api/serial/ports'); } catch { return; }
+  if (!data) return;
+
+  const notAvail = $("serialNotAvail");
+  const wrap     = $("serialPortWrap");
+  const emptyMsg = $("serialEmptyMsg");
+
+  if (!data.available) {
+    $("serialErrMsg").textContent = data.loadError || 'سبب غير معروف';
+    notAvail.classList.remove("hidden");
+    wrap.style.display = "none";
+    emptyMsg.classList.add("hidden");
+    return;
+  }
+
+  notAvail.classList.add("hidden");
+  wrap.style.display = "";
+
+  const tbody = $("serialPorts");
+
+  if (!data.ports.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">لا توجد منافذ تسلسلية</td></tr>`;
+    emptyMsg.classList.remove("hidden");
+    return;
+  }
+
+  emptyMsg.classList.add("hidden");
+  tbody.innerHTML = data.ports.map(p => `
+    <tr data-path="${esc(p.path)}">
+      <td style="font-family:monospace;font-size:13px">${esc(p.path)}</td>
+      <td>${esc(p.friendlyName || p.manufacturer) || '<span style="color:#94a3b8">—</span>'}</td>
+      <td style="font-family:monospace;font-size:12px;color:#475569">${esc(p.vendorId || '—')}:${esc(p.productId || '—')}</td>
+      <td style="text-align:left">
+        <button class="btn btn-primary btn-sm" onclick="selectSerial('${esc(p.path)}', this)">تفعيل</button>
+      </td>
+    </tr>`).join("");
+  highlightSelectedSerialPort();
+}
+
+function highlightSelectedSerialPort() {
+  document.querySelectorAll("#serialPorts tr[data-path]").forEach(row => {
+    const match = row.dataset.path === _selectedSerialPath;
+    row.style.background = match ? "rgba(34,197,94,.08)" : "";
+    const btn = row.querySelector("button");
+    if (btn) {
+      btn.textContent = match ? "✓ مفعّل" : "تفعيل";
+      btn.disabled    = match;
+    }
+  });
+}
+
+async function selectSerial(path, btn) {
+  const orig = btn.textContent;
+  btn.textContent = "جارٍ الاتصال…";
+  btn.disabled = true;
+  const baudRate = parseInt($("serialBaud").value, 10) || 9600;
+  try {
+    const r = await fetch('/api/serial/select', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, baudRate })
+    });
+    const data = await r.json();
+    if (!r.ok) throw data;
+    await loadSerialStatus();
+  } catch (e) {
+    alert(e.error || "فشل الاتصال بالمنفذ");
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
+}
+
+async function stopSerial() {
+  try {
+    await fetch('/api/serial/select', { method: 'DELETE' });
+    await loadSerialStatus();
+    await loadSerialPorts();
   } catch {}
 }
 

@@ -27,6 +27,8 @@ tags:
     description: Reporting (🔒 admin only)
   - name: devices
     description: Server-side RFID reader management (🔒 admin only for write)
+  - name: serial
+    description: Server-side serial (USB-CDC) RFID reader management (🔒 admin only for write)
 
 paths:
 
@@ -443,6 +445,131 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  # ── Serial (USB-CDC) Reader ─────────────────────────────────────
+
+  /api/serial/ports:
+    get:
+      tags: [serial]
+      operationId: listSerialPorts
+      summary: List available serial (USB-CDC) ports 🔒
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Serial port list and serialport availability
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                    description: true if the serialport module is installed and usable
+                  loadError:
+                    type: string
+                    nullable: true
+                    description: Module load error message, or null when available
+                  ports:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SerialPort"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/serial/status:
+    get:
+      tags: [serial]
+      operationId: getSerialStatus
+      summary: Current serial reader status (public)
+      security: []
+      responses:
+        "200":
+          description: Serial reader status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  active:
+                    type: boolean
+                    description: true if a serial port is open and listening
+                  path:
+                    type: string
+                    nullable: true
+                    example: "/dev/cu.usbmodem1101"
+                  baudRate:
+                    type: integer
+                    nullable: true
+                    example: 9600
+
+  /api/serial/select:
+    post:
+      tags: [serial]
+      operationId: selectSerial
+      summary: Open a serial port as the RFID reader 🔒
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+                  example: "/dev/cu.usbmodem1101"
+                baudRate:
+                  type: integer
+                  default: 9600
+                  example: 9600
+      responses:
+        "200":
+          description: Serial reader opened and settings persisted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: Missing path or invalid baudRate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          description: Could not open the serial port
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags: [serial]
+      operationId: deselectSerial
+      summary: Stop the serial RFID reader 🔒
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Serial reader closed and settings cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/events:
     get:
       tags: [devices]
@@ -543,6 +670,28 @@ components:
         usage:
           type: integer
           example: 6
+
+    SerialPort:
+      type: object
+      properties:
+        path:
+          type: string
+          example: "/dev/cu.usbmodem1101"
+        manufacturer:
+          type: string
+          example: "wch.cn"
+        friendlyName:
+          type: string
+          example: "USB-SERIAL CH340"
+        vendorId:
+          type: string
+          example: "1a86"
+        productId:
+          type: string
+          example: "7523"
+        serialNumber:
+          type: string
+          example: ""
 
     AdminInfo:
       type: object

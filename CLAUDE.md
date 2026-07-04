@@ -21,7 +21,7 @@ npx @redocly/cli lint openapi.yaml
 
 Must exit with `Your API description is valid` before committing. Warnings are OK; errors are not.
 
-### Current routes (as of 2026-06-13)
+### Current routes (as of 2026-07-04)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -32,7 +32,17 @@ Must exit with `Your API description is valid` before committing. Warnings are O
 | POST | /api/employees | 🔒 | Register employee |
 | POST | /api/check | public | Scan card (check-in/out) |
 | GET | /api/today | 🔒 | Today's attendance |
-| GET | /api/reports/monthly | 🔒 | Monthly report |
+| GET | /api/reports | 🔒 | Attendance report (date range) |
+| GET | /api/reports/monthly | 🔒 | (Legacy) redirects to /api/reports |
+| GET | /api/devices | 🔒 | List USB HID devices |
+| GET | /api/devices/status | public | HID reader status |
+| POST | /api/devices/select | 🔒 | Open HID device as reader |
+| DELETE | /api/devices/select | 🔒 | Stop HID reader |
+| GET | /api/serial/ports | 🔒 | List serial (USB-CDC) ports |
+| GET | /api/serial/status | public | Serial reader status |
+| POST | /api/serial/select | 🔒 | Open serial port as reader |
+| DELETE | /api/serial/select | 🔒 | Stop serial reader |
+| GET | /api/events | public | SSE scan/status stream |
 
 ## Key constants
 
