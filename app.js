@@ -2,7 +2,7 @@ import express from "express";
 import session from "express-session";
 import bcrypt from "bcryptjs";
 import Database from "better-sqlite3";
-import { hidAvailable, listDevices, RFIDReader } from "./rfid-reader.js";
+import { hidAvailable, hidLoadError, listDevices, RFIDReader } from "./rfid-reader.js";
 
 const app = express();
 const dbPath = process.env.DB_PATH || "attendance.db";
@@ -242,7 +242,12 @@ app.get("/api/today", requireAuth, (req, res) => {
 
 // ── RFID device management ────────────────────────────────────────────────
 app.get("/api/devices", requireAuth, (req, res) => {
-  res.json({ available: hidAvailable, devices: listDevices() });
+  const showAll = req.query.all === 'true';
+  res.json({
+    available: hidAvailable,
+    loadError: hidLoadError || null,
+    devices: listDevices(showAll),
+  });
 });
 
 app.get("/api/devices/status", (req, res) => {

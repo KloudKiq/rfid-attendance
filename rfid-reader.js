@@ -5,10 +5,15 @@ const require = createRequire(import.meta.url);
 
 let _hid = null;
 export let hidAvailable = false;
+export let hidLoadError = '';
 try {
   _hid = require('node-hid');
   hidAvailable = true;
-} catch {}
+} catch (e) {
+  hidLoadError = e.message;
+  console.error('[rfid-reader] node-hid failed to load:', e.message);
+  console.error('[rfid-reader] Try: npm rebuild node-hid');
+}
 
 // USB HID keyboard usage codes → ASCII (standard keyboard-emulating RFID readers)
 const KEYMAP = new Map([
@@ -19,9 +24,11 @@ const KEYMAP = new Map([
   [0x2D, '-'],
 ]);
 
-export function listDevices() {
+// showAll=false → only keyboard-type HID devices (what RFID readers emulate)
+export function listDevices(showAll = false) {
   if (!hidAvailable) return [];
-  return _hid.devices().map(d => ({
+  const raw = _hid.devices();
+  const mapped = raw.map(d => ({
     vendorId:     d.vendorId,
     productId:    d.productId,
     path:         d.path || '',
@@ -30,6 +37,10 @@ export function listDevices() {
     usagePage:    d.usagePage,
     usage:        d.usage,
   }));
+  if (showAll) return mapped;
+  // usagePage=1 (Generic Desktop), usage=6 (Keyboard) is the standard for
+  // RFID readers that emulate a USB keyboard to type card IDs.
+  return mapped.filter(d => d.usagePage === 1 && d.usage === 6);
 }
 
 export class RFIDReader extends EventEmitter {

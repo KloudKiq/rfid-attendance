@@ -520,39 +520,52 @@
       <!-- Status card -->
       <div class="card">
         <h3><span class="icon">📡</span> حالة قارئ RFID</h3>
-        <div id="rfidStatus" style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div id="rfidStatus" style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
           <span id="rfidDot" style="width:12px;height:12px;border-radius:50%;background:#94a3b8;flex-shrink:0"></span>
           <span id="rfidStatusText" style="font-size:14px;color:#64748b">جارٍ التحقق…</span>
-          <button class="btn btn-danger btn-sm" id="rfidStopBtn" style="display:none;margin-right:auto" onclick="stopDevice()">إيقاف القارئ</button>
+          <button class="btn btn-danger btn-sm" id="rfidStopBtn" style="display:none;margin-right:auto" onclick="stopDevice()">⏹ إيقاف القارئ</button>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" onclick="loadDevices()">🔄 تحديث قائمة الأجهزة</button>
-          <span style="font-size:12px;color:#94a3b8">اختر الجهاز الذي يمثّل قارئ RFID من القائمة أدناه</span>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#475569;cursor:pointer">
+            <input type="checkbox" id="rfidShowAll" onchange="loadDevices()">
+            عرض جميع أجهزة HID (لا يُنصح)
+          </label>
         </div>
       </div>
 
       <!-- Device list card -->
       <div class="card">
         <h3><span class="icon">🔌</span> الأجهزة المتصلة</h3>
-        <div id="rfidNotAvail" class="hidden" style="color:#dc2626;font-size:14px;padding:12px 0">
-          ⚠️ حزمة <code>node-hid</code> غير مثبتة. شغّل: <code>npm install node-hid</code> ثم أعد تشغيل الخادم.
+        <div id="rfidNotAvail" class="hidden"
+             style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 16px;font-size:13px;color:#991b1b;margin-bottom:12px">
+          <strong>⚠️ تعذّر تحميل node-hid</strong><br>
+          <span id="rfidErrMsg"></span><br><br>
+          الحلول المقترحة:
+          <ol style="margin:6px 0 0 18px;line-height:1.8">
+            <li>شغّل: <code style="background:#fee2e2;padding:1px 4px;border-radius:3px">npm rebuild node-hid</code></li>
+            <li>أو أعد التثبيت: <code style="background:#fee2e2;padding:1px 4px;border-radius:3px">npm install node-hid</code></li>
+            <li>ثم أعد تشغيل الخادم</li>
+          </ol>
         </div>
         <div class="table-wrap" id="rfidDeviceWrap">
-          <table id="rfidDeviceTable">
+          <table>
             <thead>
               <tr>
                 <th>الجهة المصنعة</th>
                 <th>اسم الجهاز</th>
                 <th style="font-family:monospace">VID / PID</th>
-                <th>النوع</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="rfidDevices">
-              <tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:24px">اضغط «تحديث» لرؤية الأجهزة</td></tr>
+              <tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">اضغط «تحديث» لرؤية الأجهزة</td></tr>
             </tbody>
           </table>
         </div>
+        <p id="rfidEmptyMsg" class="hidden" style="color:#94a3b8;font-size:13px;margin-top:8px">
+          لا توجد أجهزة لوحة مفاتيح HID — إذا كان القارئ متصلاً فعّل «عرض جميع أجهزة HID».
+        </p>
       </div>
 
     </div>
@@ -970,51 +983,60 @@ function updateRfidStatusUI(s) {
 }
 
 async function loadDevices() {
+  const showAll = $("rfidShowAll")?.checked;
   let data;
-  try { data = await apiGet('/api/devices'); } catch { return; }
+  try {
+    data = await apiGet('/api/devices' + (showAll ? '?all=true' : ''));
+  } catch { return; }
   if (!data) return;
 
+  const notAvail  = $("rfidNotAvail");
+  const wrap      = $("rfidDeviceWrap");
+  const emptyMsg  = $("rfidEmptyMsg");
+
   if (!data.available) {
-    $("rfidNotAvail").classList.remove("hidden");
-    $("rfidDeviceWrap").style.display = "none";
+    $("rfidErrMsg").textContent = data.loadError || 'سبب غير معروف';
+    notAvail.classList.remove("hidden");
+    wrap.style.display = "none";
+    emptyMsg.classList.add("hidden");
     return;
   }
-  $("rfidNotAvail").classList.add("hidden");
-  $("rfidDeviceWrap").style.display = "";
+
+  notAvail.classList.add("hidden");
+  wrap.style.display = "";
 
   const tbody = $("rfidDevices");
+
   if (!data.devices.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:24px">لا توجد أجهزة HID متصلة</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">لا توجد أجهزة متصلة</td></tr>`;
+    emptyMsg.classList.remove("hidden");
     return;
   }
-  tbody.innerHTML = data.devices.map(d => {
-    const isKbd = d.usagePage === 1 && d.usage === 6;
-    const typeLabel = isKbd
-      ? `<span class="badge" style="background:#dbeafe;color:#1d4ed8">لوحة مفاتيح</span>`
-      : `<span style="color:#94a3b8;font-size:12px">0x${d.usagePage?.toString(16) ?? '?'}:0x${d.usage?.toString(16) ?? '?'}</span>`;
-    return `<tr data-vid="${d.vendorId}" data-pid="${d.productId}">
-      <td>${esc(d.manufacturer) || "—"}</td>
-      <td>${esc(d.product) || "—"}</td>
-      <td style="font-family:monospace;font-size:13px">
-        0x${d.vendorId.toString(16).toUpperCase().padStart(4,'0')} / 0x${d.productId.toString(16).toUpperCase().padStart(4,'0')}
+
+  emptyMsg.classList.add("hidden");
+  tbody.innerHTML = data.devices.map(d => `
+    <tr data-vid="${d.vendorId}" data-pid="${d.productId}">
+      <td>${esc(d.manufacturer) || '<span style="color:#94a3b8">—</span>'}</td>
+      <td>${esc(d.product)      || '<span style="color:#94a3b8">—</span>'}</td>
+      <td style="font-family:monospace;font-size:12px;color:#475569">
+        ${d.vendorId.toString(16).toUpperCase().padStart(4,'0')}:${d.productId.toString(16).toUpperCase().padStart(4,'0')}
       </td>
-      <td>${typeLabel}</td>
-      <td>
-        <button class="btn btn-primary btn-sm" onclick="selectDevice(${d.vendorId}, ${d.productId}, this)">تفعيل</button>
+      <td style="text-align:left">
+        <button class="btn btn-primary btn-sm"
+          onclick="selectDevice(${d.vendorId}, ${d.productId}, this)">تفعيل</button>
       </td>
-    </tr>`;
-  }).join("");
+    </tr>`).join("");
   highlightSelectedDevice();
 }
 
 function highlightSelectedDevice() {
-  document.querySelectorAll("#rfidDevices tr").forEach(row => {
+  document.querySelectorAll("#rfidDevices tr[data-vid]").forEach(row => {
     const match = +row.dataset.vid === _selectedVid && +row.dataset.pid === _selectedPid;
     row.style.background = match ? "rgba(34,197,94,.08)" : "";
     const btn = row.querySelector("button");
     if (btn) {
-      btn.textContent = match ? "✓ محدد" : "تفعيل";
-      btn.disabled = match;
+      btn.textContent = match ? "✓ مفعّل" : "تفعيل";
+      btn.disabled    = match;
     }
   });
 }
