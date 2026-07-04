@@ -462,6 +462,7 @@
       <div class="tab active" onclick="switchTab('employees')">👥 الموظفون</div>
       <div class="tab" onclick="switchTab('today')">📅 حركات اليوم</div>
       <div class="tab" onclick="switchTab('reports')">📊 التقارير الشهرية</div>
+      <div class="tab" onclick="switchTab('rfid')">📡 قارئ RFID</div>
     </div>
 
     <!-- Employees Tab -->
@@ -511,6 +512,49 @@
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- RFID Reader Tab -->
+    <div class="tab-panel" id="tab-rfid">
+
+      <!-- Status card -->
+      <div class="card">
+        <h3><span class="icon">📡</span> حالة قارئ RFID</h3>
+        <div id="rfidStatus" style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+          <span id="rfidDot" style="width:12px;height:12px;border-radius:50%;background:#94a3b8;flex-shrink:0"></span>
+          <span id="rfidStatusText" style="font-size:14px;color:#64748b">جارٍ التحقق…</span>
+          <button class="btn btn-danger btn-sm" id="rfidStopBtn" style="display:none;margin-right:auto" onclick="stopDevice()">إيقاف القارئ</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-ghost btn-sm" onclick="loadDevices()">🔄 تحديث قائمة الأجهزة</button>
+          <span style="font-size:12px;color:#94a3b8">اختر الجهاز الذي يمثّل قارئ RFID من القائمة أدناه</span>
+        </div>
+      </div>
+
+      <!-- Device list card -->
+      <div class="card">
+        <h3><span class="icon">🔌</span> الأجهزة المتصلة</h3>
+        <div id="rfidNotAvail" class="hidden" style="color:#dc2626;font-size:14px;padding:12px 0">
+          ⚠️ حزمة <code>node-hid</code> غير مثبتة. شغّل: <code>npm install node-hid</code> ثم أعد تشغيل الخادم.
+        </div>
+        <div class="table-wrap" id="rfidDeviceWrap">
+          <table id="rfidDeviceTable">
+            <thead>
+              <tr>
+                <th>الجهة المصنعة</th>
+                <th>اسم الجهاز</th>
+                <th style="font-family:monospace">VID / PID</th>
+                <th>النوع</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rfidDevices">
+              <tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:24px">اضغط «تحديث» لرؤية الأجهزة</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
 
     <!-- Reports Tab -->
@@ -629,6 +673,7 @@ async function showAdmin(username) {
   const emps = await loadEmployees();
   if (emps) await populateEmployeeSelect(emps);
   loadToday();
+  loadDeviceStatus();
 }
 
 async function logout() {
@@ -637,9 +682,11 @@ async function logout() {
 }
 
 function switchTab(name) {
-  document.querySelectorAll(".tab").forEach((t, i) => t.classList.toggle("active", ["employees","today","reports"][i] === name));
+  document.querySelectorAll(".tab").forEach((t, i) =>
+    t.classList.toggle("active", ["employees","today","reports","rfid"][i] === name));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   $("tab-" + name).classList.add("active");
+  if (name === "rfid") { loadDeviceStatus(); loadDevices(); }
 }
 
 $("newCard").addEventListener("keydown", e => { if (e.key === "Enter") $("newName").focus(); });
@@ -884,6 +931,120 @@ function exportCSV() {
   a.href = "data:text/csv;charset=utf-8,\uFEFF" + encodeURIComponent(csv);
   a.download = `report-${reportData.from}-to-${reportData.to}.csv`;
   a.click();
+}
+
+// ── RFID Device Management ─────────────────────────────────────────────────
+let _selectedVid = null, _selectedPid = null;
+
+async function loadDeviceStatus() {
+  let s;
+  try { s = await fetch('/api/devices/status').then(r => r.json()); } catch { return; }
+  updateRfidStatusUI(s);
+}
+
+function updateRfidStatusUI(s) {
+  const dot  = $("rfidDot");
+  const txt  = $("rfidStatusText");
+  const stop = $("rfidStopBtn");
+  if (!s.available) {
+    dot.style.background = "#f59e0b";
+    txt.textContent = "node-hid غير متاح";
+    stop.style.display = "none";
+    return;
+  }
+  if (s.active) {
+    dot.style.background = "#22c55e";
+    txt.textContent = `متصل — VID: 0x${s.vendorId.toString(16).toUpperCase()}  PID: 0x${s.productId.toString(16).toUpperCase()}`;
+    stop.style.display = "";
+    _selectedVid = s.vendorId;
+    _selectedPid = s.productId;
+  } else {
+    dot.style.background = "#ef4444";
+    txt.textContent = "غير متصل — اختر جهازاً من القائمة";
+    stop.style.display = "none";
+    _selectedVid = null;
+    _selectedPid = null;
+  }
+  // Refresh row highlight if device list is loaded
+  highlightSelectedDevice();
+}
+
+async function loadDevices() {
+  let data;
+  try { data = await apiGet('/api/devices'); } catch { return; }
+  if (!data) return;
+
+  if (!data.available) {
+    $("rfidNotAvail").classList.remove("hidden");
+    $("rfidDeviceWrap").style.display = "none";
+    return;
+  }
+  $("rfidNotAvail").classList.add("hidden");
+  $("rfidDeviceWrap").style.display = "";
+
+  const tbody = $("rfidDevices");
+  if (!data.devices.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:24px">لا توجد أجهزة HID متصلة</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.devices.map(d => {
+    const isKbd = d.usagePage === 1 && d.usage === 6;
+    const typeLabel = isKbd
+      ? `<span class="badge" style="background:#dbeafe;color:#1d4ed8">لوحة مفاتيح</span>`
+      : `<span style="color:#94a3b8;font-size:12px">0x${d.usagePage?.toString(16) ?? '?'}:0x${d.usage?.toString(16) ?? '?'}</span>`;
+    return `<tr data-vid="${d.vendorId}" data-pid="${d.productId}">
+      <td>${esc(d.manufacturer) || "—"}</td>
+      <td>${esc(d.product) || "—"}</td>
+      <td style="font-family:monospace;font-size:13px">
+        0x${d.vendorId.toString(16).toUpperCase().padStart(4,'0')} / 0x${d.productId.toString(16).toUpperCase().padStart(4,'0')}
+      </td>
+      <td>${typeLabel}</td>
+      <td>
+        <button class="btn btn-primary btn-sm" onclick="selectDevice(${d.vendorId}, ${d.productId}, this)">تفعيل</button>
+      </td>
+    </tr>`;
+  }).join("");
+  highlightSelectedDevice();
+}
+
+function highlightSelectedDevice() {
+  document.querySelectorAll("#rfidDevices tr").forEach(row => {
+    const match = +row.dataset.vid === _selectedVid && +row.dataset.pid === _selectedPid;
+    row.style.background = match ? "rgba(34,197,94,.08)" : "";
+    const btn = row.querySelector("button");
+    if (btn) {
+      btn.textContent = match ? "✓ محدد" : "تفعيل";
+      btn.disabled = match;
+    }
+  });
+}
+
+async function selectDevice(vendorId, productId, btn) {
+  const orig = btn.textContent;
+  btn.textContent = "جارٍ الاتصال…";
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/devices/select', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vendorId, productId })
+    });
+    const data = await r.json();
+    if (!r.ok) throw data;
+    await loadDeviceStatus();
+  } catch (e) {
+    alert(e.error || "فشل الاتصال بالجهاز");
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
+}
+
+async function stopDevice() {
+  try {
+    await fetch('/api/devices/select', { method: 'DELETE' });
+    await loadDeviceStatus();
+    await loadDevices();
+  } catch {}
 }
 
 async function loadToday() {

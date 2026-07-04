@@ -2,6 +2,7 @@ import express from "express";
 import session from "express-session";
 import bcrypt from "bcryptjs";
 import Database from "better-sqlite3";
+import { hidAvailable, listDevices, RFIDReader } from "./rfid-reader.js";
 
 const app = express();
 const dbPath = process.env.DB_PATH || "attendance.db";
@@ -33,6 +34,11 @@ CREATE TABLE IF NOT EXISTS attendance (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(employee_id) REFERENCES employees(id)
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
 `);
 
 const hasAdmin = db.prepare("SELECT id FROM admins LIMIT 1").get();
@@ -55,6 +61,120 @@ function requireAuth(req, res, next) {
   res.status(401).json({ error: "UNAUTHORIZED" });
 }
 
+// ── Settings helpers ──────────────────────────────────────────────────────
+function getSetting(key) {
+  return db.prepare("SELECT value FROM settings WHERE key=?").get(key)?.value ?? null;
+}
+function setSetting(key, value) {
+  db.prepare("INSERT OR REPLACE INTO settings(key, value) VALUES (?,?)").run(key, String(value));
+}
+function deleteSetting(key) {
+  db.prepare("DELETE FROM settings WHERE key=?").run(key);
+}
+
+// ── SSE broadcast ─────────────────────────────────────────────────────────
+const sseClients = new Set();
+
+function broadcastSSE(data) {
+  const msg = `data: ${JSON.stringify(data)}\n\n`;
+  for (const res of sseClients) {
+    try { res.write(msg); } catch {}
+  }
+}
+
+// Keep connections alive through proxies
+setInterval(() => {
+  for (const res of sseClients) {
+    try { res.write(': heartbeat\n\n'); } catch {}
+  }
+}, 25000);
+
+// ── RFID reader ───────────────────────────────────────────────────────────
+const reader = new RFIDReader();
+let _retryTimer = null;
+
+reader.on('card', card_id => {
+  const result = processCard(card_id);
+  broadcastSSE({ type: 'scan', ...result });
+});
+
+reader.on('error', err => {
+  console.error('RFID reader disconnected:', err.message);
+  broadcastSSE({ type: 'status', active: false });
+  _scheduleRetry();
+});
+
+function _openReader(vendorId, productId) {
+  clearTimeout(_retryTimer);
+  reader.open(vendorId, productId);
+  broadcastSSE({ type: 'status', active: true });
+  console.log(`RFID reader opened: VID=0x${vendorId.toString(16)} PID=0x${productId.toString(16)}`);
+}
+
+function _closeReader() {
+  clearTimeout(_retryTimer);
+  reader.close();
+  broadcastSSE({ type: 'status', active: false });
+}
+
+function _scheduleRetry() {
+  const vid = getSetting('rfid_vendor_id');
+  const pid = getSetting('rfid_product_id');
+  if (!vid || !pid) return;
+  clearTimeout(_retryTimer);
+  _retryTimer = setTimeout(() => {
+    if (!reader.isOpen) {
+      try { _openReader(+vid, +pid); } catch {}
+      _scheduleRetry();
+    }
+  }, 5000);
+}
+
+// Auto-open saved reader on startup
+{
+  const vid = getSetting('rfid_vendor_id');
+  const pid = getSetting('rfid_product_id');
+  if (vid && pid) {
+    try { _openReader(+vid, +pid); }
+    catch (e) { console.error('RFID auto-open failed:', e.message); _scheduleRetry(); }
+  }
+}
+
+// ── Card processing (shared by HTTP + HID paths) ──────────────────────────
+const CARD_COOLDOWN_SECONDS = 10;
+
+function processCard(card_id) {
+  const emp = db.prepare("SELECT * FROM employees WHERE card_id=? AND active=1").get(card_id);
+  if (!emp) return { ok: false, error: "بطاقة غير معرفة", card_id };
+
+  const last = db.prepare(`
+    SELECT type, created_at FROM attendance
+    WHERE employee_id=?
+    ORDER BY id DESC LIMIT 1
+  `).get(emp.id);
+
+  if (last) {
+    const secs =
+      (Date.now() - new Date(last.created_at.replace(" ", "T") + "Z").getTime()) / 1000;
+    if (secs < CARD_COOLDOWN_SECONDS) {
+      return {
+        ok: true, type: last.type,
+        employee: { id: emp.id, name: emp.name, title: emp.title },
+        time: new Date().toLocaleString(), deduplicated: true
+      };
+    }
+  }
+
+  const nextType = last?.type === "IN" ? "OUT" : "IN";
+  db.prepare("INSERT INTO attendance(employee_id, type) VALUES (?, ?)").run(emp.id, nextType);
+  return {
+    ok: true, type: nextType,
+    employee: { id: emp.id, name: emp.name, title: emp.title },
+    time: new Date().toLocaleString(), deduplicated: false
+  };
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────
 app.post("/api/login", (req, res) => {
   const { username, password } = req.body;
   const admin = db.prepare("SELECT * FROM admins WHERE username=?").get(username);
@@ -73,10 +193,11 @@ app.get("/api/me", (req, res) => {
   res.json({ loggedIn: !!req.session.admin, admin: req.session.admin || null });
 });
 
+// ── Employees ─────────────────────────────────────────────────────────────
 app.post("/api/employees", requireAuth, (req, res) => {
   const card_id = String(req.body.card_id || "").trim();
-  const name = String(req.body.name || "").trim();
-  const title = String(req.body.title || "").trim();
+  const name    = String(req.body.name    || "").trim();
+  const title   = String(req.body.title   || "").trim();
 
   if (!card_id || !name) return res.status(400).json({ error: "رقم البطاقة والاسم مطلوبان" });
 
@@ -98,46 +219,79 @@ app.get("/api/employees", requireAuth, (req, res) => {
   res.json(rows);
 });
 
-const CARD_COOLDOWN_SECONDS = 10;
-
+// ── Attendance ────────────────────────────────────────────────────────────
 app.post("/api/check", (req, res) => {
   const card_id = String(req.body.card_id || "").trim();
   if (!card_id) return res.status(400).json({ error: "لا يوجد رقم بطاقة" });
+  const result = processCard(card_id);
+  if (!result.ok) return res.status(404).json(result);
+  res.json(result);
+});
 
-  const emp = db.prepare("SELECT * FROM employees WHERE card_id=? AND active=1").get(card_id);
-  if (!emp) return res.status(404).json({ error: "بطاقة غير معرفة", card_id });
+app.get("/api/today", requireAuth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT a.id, e.name, e.title, e.card_id, a.type, a.created_at
+    FROM attendance a
+    JOIN employees e ON e.id = a.employee_id
+    WHERE date(a.created_at, 'localtime') = date('now', 'localtime')
+    ORDER BY a.id DESC
+    LIMIT 100
+  `).all();
+  res.json(rows);
+});
 
-  const last = db.prepare(`
-    SELECT type, created_at FROM attendance
-    WHERE employee_id=?
-    ORDER BY id DESC LIMIT 1
-  `).get(emp.id);
+// ── RFID device management ────────────────────────────────────────────────
+app.get("/api/devices", requireAuth, (req, res) => {
+  res.json({ available: hidAvailable, devices: listDevices() });
+});
 
-  if (last) {
-    const secondsSinceLast =
-      (Date.now() - new Date(last.created_at.replace(" ", "T") + "Z").getTime()) / 1000;
-    if (secondsSinceLast < CARD_COOLDOWN_SECONDS) {
-      return res.json({
-        ok: true,
-        type: last.type,
-        employee: { id: emp.id, name: emp.name, title: emp.title },
-        time: new Date().toLocaleString(),
-        deduplicated: true
-      });
-    }
-  }
-
-  const nextType = last?.type === "IN" ? "OUT" : "IN";
-  db.prepare("INSERT INTO attendance(employee_id, type) VALUES (?, ?)").run(emp.id, nextType);
-
+app.get("/api/devices/status", (req, res) => {
   res.json({
-    ok: true,
-    type: nextType,
-    employee: { id: emp.id, name: emp.name, title: emp.title },
-    time: new Date().toLocaleString()
+    available: hidAvailable,
+    active:    reader.isOpen,
+    vendorId:  reader.vendorId  ?? null,
+    productId: reader.productId ?? null,
   });
 });
 
+app.post("/api/devices/select", requireAuth, (req, res) => {
+  const vendorId  = parseInt(req.body.vendorId,  10);
+  const productId = parseInt(req.body.productId, 10);
+  if (isNaN(vendorId) || isNaN(productId)) {
+    return res.status(400).json({ error: "vendorId و productId مطلوبان" });
+  }
+  try {
+    _openReader(vendorId, productId);
+    setSetting('rfid_vendor_id',  vendorId);
+    setSetting('rfid_product_id', productId);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/devices/select", requireAuth, (req, res) => {
+  _closeReader();
+  deleteSetting('rfid_vendor_id');
+  deleteSetting('rfid_product_id');
+  res.json({ ok: true });
+});
+
+// ── SSE event stream ──────────────────────────────────────────────────────
+app.get("/api/events", (req, res) => {
+  res.setHeader("Content-Type",  "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection",    "keep-alive");
+  res.flushHeaders();
+
+  // Immediately push current reader status so the page knows the mode
+  res.write(`data: ${JSON.stringify({ type: 'status', active: reader.isOpen })}\n\n`);
+
+  sseClients.add(res);
+  req.on("close", () => sseClients.delete(res));
+});
+
+// ── Reports ───────────────────────────────────────────────────────────────
 app.get("/api/reports", requireAuth, (req, res) => {
   let from, to;
   if (req.query.from && req.query.to) {
@@ -197,18 +351,6 @@ app.get("/api/reports", requireAuth, (req, res) => {
 
 app.get("/api/reports/monthly", requireAuth, (req, res) => {
   res.redirect(307, `/api/reports?${new URLSearchParams(req.query)}`);
-});
-
-app.get("/api/today", requireAuth, (req, res) => {
-  const rows = db.prepare(`
-    SELECT a.id, e.name, e.title, e.card_id, a.type, a.created_at
-    FROM attendance a
-    JOIN employees e ON e.id = a.employee_id
-    WHERE date(a.created_at, 'localtime') = date('now', 'localtime')
-    ORDER BY a.id DESC
-    LIMIT 100
-  `).all();
-  res.json(rows);
 });
 
 export { app, db };

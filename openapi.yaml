@@ -25,6 +25,8 @@ tags:
     description: Card scan and attendance records
   - name: reports
     description: Reporting (🔒 admin only)
+  - name: devices
+    description: Server-side RFID reader management (🔒 admin only for write)
 
 paths:
 
@@ -323,6 +325,138 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  # ── RFID Devices ──────────────────────────────────────────────────────────
+
+  /api/devices:
+    get:
+      tags: [devices]
+      operationId: listDevices
+      summary: List connected USB HID devices 🔒
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: HID device list and node-hid availability
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                    description: true if node-hid is installed and usable
+                  devices:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/HidDevice"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/devices/status:
+    get:
+      tags: [devices]
+      operationId: getDeviceStatus
+      summary: Current server-side reader status (public)
+      security: []
+      responses:
+        "200":
+          description: Reader status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  active:
+                    type: boolean
+                    description: true if a reader is open and listening
+                  vendorId:
+                    type: integer
+                    nullable: true
+                  productId:
+                    type: integer
+                    nullable: true
+
+  /api/devices/select:
+    post:
+      tags: [devices]
+      operationId: selectDevice
+      summary: Select a USB HID device as the RFID reader 🔒
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vendorId, productId]
+              properties:
+                vendorId:
+                  type: integer
+                  example: 1155
+                productId:
+                  type: integer
+                  example: 22352
+      responses:
+        "200":
+          description: Reader opened and settings persisted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: Missing or invalid vendorId/productId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          description: Could not open HID device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags: [devices]
+      operationId: deselectDevice
+      summary: Stop the server-side RFID reader 🔒
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Reader closed and settings cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/events:
+    get:
+      tags: [devices]
+      operationId: getEvents
+      summary: Server-Sent Events stream for real-time scan results (public)
+      security: []
+      description: >
+        Streams newline-delimited JSON events to connected browsers.
+        Event types: "status" (reader connected/disconnected) and
+        "scan" (card scanned with employee info and IN/OUT type).
+      responses:
+        "200":
+          description: SSE stream (Content-Type text/event-stream)
+
   /api/reports/monthly:
     get:
       tags: [reports]
@@ -384,6 +518,31 @@ components:
       properties:
         error:
           type: string
+
+    HidDevice:
+      type: object
+      properties:
+        vendorId:
+          type: integer
+          example: 1155
+        productId:
+          type: integer
+          example: 22352
+        path:
+          type: string
+          example: "/dev/hidraw0"
+        manufacturer:
+          type: string
+          example: "ACS"
+        product:
+          type: string
+          example: "ACR122U PICC Interface"
+        usagePage:
+          type: integer
+          example: 1
+        usage:
+          type: integer
+          example: 6
 
     AdminInfo:
       type: object

@@ -327,8 +327,70 @@ let scanBuffer = "";
 let scanTimer  = null;
 let isChecking = false;  // in-flight lock — prevents concurrent POSTs
 let msgTimer   = null;   // ref to message-clear timeout so we can cancel it
+let serverMode = false;  // true when server is reading the RFID device directly
 
+function timeGreeting() {
+  const h = new Date().getHours();
+  if (h >= 5  && h < 12) return "صباح الخير";
+  if (h >= 12 && h < 17) return "مساء الخير";
+  if (h >= 17 && h < 21) return "مساء النور";
+  return "أهلاً";
+}
+
+// ── Display ───────────────────────────────────────────────────────────────
+function showResult(r) {
+  clearTimeout(msgTimer);
+  if (r.ok) {
+    const isIn   = r.type === "IN";
+    const cls    = isIn ? "in-card" : "out-card";
+    const icon   = isIn ? "✅" : "🚪";
+    const label  = isIn ? "تسجيل دخول" : "تسجيل خروج";
+    const phrase = isIn ? `${timeGreeting()}،` : "إلى اللقاء،";
+    $("scanMsg").innerHTML = `
+      <div class="greeting-card ${cls}">
+        <div class="greet-line">${phrase}</div>
+        <div class="emp-name">${esc(r.employee.name)}</div>
+        <span class="type-badge">${icon} ${label}</span>
+        <div class="scan-time">${esc(r.time)}</div>
+      </div>`;
+  } else {
+    const msg = r.error || "خطأ";
+    $("scanMsg").innerHTML =
+      `<div class="msg-err">⚠️ ${msg}${r.card_id ? " — البطاقة: " + esc(r.card_id) : ""}</div>`;
+  }
+  msgTimer = setTimeout(() => { $("scanMsg").innerHTML = ""; }, 5000);
+}
+
+// ── SSE (server-driven mode) ──────────────────────────────────────────────
+function connectSSE() {
+  const es = new EventSource('/api/events');
+  es.onmessage = e => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'status') applyMode(data.active);
+      else if (data.type === 'scan' && serverMode) showResult(data);
+    } catch {}
+  };
+  // EventSource auto-reconnects on drop
+}
+
+function applyMode(active) {
+  serverMode = active;
+  if (active) {
+    $("scanCard").value = "";
+    $("scanCard").classList.remove("scanning");
+    $("scanCard").placeholder = "يتم المسح تلقائياً من الخادم";
+    $("scanReady").innerHTML = '<span class="pulse-dot" style="background:#3b82f6"></span> القارئ متصل بالخادم';
+  } else {
+    $("scanCard").placeholder = "في انتظار البطاقة...";
+    $("scanReady").innerHTML = '<span class="pulse-dot"></span> جاهز للمسح';
+  }
+}
+
+// ── Keyboard capture (browser-driven mode) ───────────────────────────────
 document.addEventListener("keydown", e => {
+  if (serverMode) return; // server handles scanning
+
   const active = document.activeElement;
   // Skip capture if focus is inside any element marked as an admin input
   if (active && active.closest("[data-admin-input]")) return;
@@ -361,6 +423,7 @@ document.addEventListener("keydown", e => {
 
 // Restore capture focus after any click that isn't an admin input or button
 document.addEventListener("click", e => {
+  if (serverMode) return;
   if (!e.target?.closest("[data-admin-input]") && e.target?.tagName !== "BUTTON") {
     $("scanCard").focus();
   }
@@ -369,7 +432,7 @@ document.addEventListener("click", e => {
 // Restore capture focus when the window regains focus after OS interrupts
 // (alt-tab, lock screen, notifications). Without this the first post-interrupt
 // scan is silently dropped.
-window.addEventListener("focus", () => $("scanCard").focus());
+window.addEventListener("focus", () => { if (!serverMode) $("scanCard").focus(); });
 
 async function api(url, data) {
   const res = await fetch(url, {
@@ -382,14 +445,6 @@ async function api(url, data) {
   return json;
 }
 
-function timeGreeting() {
-  const h = new Date().getHours();
-  if (h >= 5  && h < 12) return "صباح الخير";
-  if (h >= 12 && h < 17) return "مساء الخير";
-  if (h >= 17 && h < 21) return "مساء النور";
-  return "أهلاً";
-}
-
 async function check() {
   if (isChecking) return;  // drop scan while a request is already in-flight
   isChecking = true;
@@ -399,37 +454,20 @@ async function check() {
   $("scanCard").classList.remove("scanning");
   scanBuffer = "";
 
-  // Cancel any pending message-clear from a previous scan
-  clearTimeout(msgTimer);
-
   try {
     const r = await api("/api/check", { card_id: card });
-    const isIn   = r.type === "IN";
-    const cls    = isIn ? "in-card" : "out-card";
-    const icon   = isIn ? "✅" : "🚪";
-    const label  = isIn ? "تسجيل دخول" : "تسجيل خروج";
-    const phrase = isIn
-      ? `${timeGreeting()}،`
-      : "إلى اللقاء،";
-    $("scanMsg").innerHTML = `
-      <div class="greeting-card ${cls}">
-        <div class="greet-line">${phrase}</div>
-        <div class="emp-name">${esc(r.employee.name)}</div>
-        <span class="type-badge">${icon} ${label}</span>
-        <div class="scan-time">${esc(r.time)}</div>
-      </div>`;
+    showResult(r);
   } catch (e) {
     // Distinguish server-down (TypeError: network failure) from app errors
-    const msg = e instanceof TypeError
-      ? "الشبكة غير متاحة"
-      : (e.error || "خطأ");
-    $("scanMsg").innerHTML =
-      `<div class="msg-err">⚠️ ${msg}${e.card_id ? " — البطاقة: " + e.card_id : ""}</div>`;
+    const msg = e instanceof TypeError ? "الشبكة غير متاحة" : (e.error || "خطأ");
+    showResult({ ok: false, error: msg, card_id: e.card_id });
   } finally {
     isChecking = false;
-    msgTimer = setTimeout(() => { $("scanMsg").innerHTML = ""; }, 5000);
   }
 }
+
+// ── Init ─────────────────────────────────────────────────────────────────
+connectSSE(); // always connect; SSE sends initial status event
 
 </script>
 </body>
