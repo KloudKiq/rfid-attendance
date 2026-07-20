@@ -2,8 +2,12 @@
   "name": "rfid-attendance",
   "version": "1.0.0",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
     "start": "node server.js",
+    "electron": "electron-builder install-app-deps && electron .",
+    "dist": "electron-builder --win",
+    "rebuild:node": "npm rebuild better-sqlite3 node-hid serialport",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npx playwright test",
@@ -19,7 +23,37 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
     "supertest": "^7.2.2",
     "vitest": "^4.1.9"
+  },
+  "build": {
+    "appId": "com.kloudkiq.rfid-attendance",
+    "productName": "RFID Attendance",
+    "files": [
+      "app.js",
+      "rfid-reader.js",
+      "serial-reader.js",
+      "public/**/*",
+      "electron/**/*",
+      "node_modules/**/*",
+      "package.json",
+      "!**/*.db",
+      "!**/*.db-journal"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

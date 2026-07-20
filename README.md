@@ -10,18 +10,43 @@
 ### لوحة الإدارة (Admin Panel)
 ![Admin](docs/admin.png)
 
-## التشغيل
+## التشغيل (تطبيق ويندوز)
+
+التطبيق الآن تطبيق ويندوز مكتبي (Electron) — نافذة، أيقونة في شريط النظام (Tray)، وتشغيل تلقائي مع بدء تشغيل ويندوز.
 
 ```bash
 npm install
-npm start
+npm run electron   # تشغيل التطبيق محلياً للتطوير/الاختبار
 ```
 
-افتح:
+لإنشاء ملف تثبيت `.exe` لويندوز:
+
+```bash
+npm run dist        # يحتاج Wine على macOS/Linux، أو نفّذه على ويندوز مباشرة
+```
+
+أو استخدم GitHub Actions workflow المرفق (`.github/workflows/build-windows.yml`) — يبني ملف التثبيت على `windows-latest` ويرفعه كـ artifact (أو للـ Release عند دفع تاغ `v*`)، دون الحاجة لـ Wine.
+
+بعد التثبيت، قاعدة البيانات تُحفظ في مجلد بيانات المستخدم (`%APPDATA%\rfid-attendance\attendance.db`) وليس داخل مجلد البرنامج.
+
+### تشغيل الخادم مباشرة (بدون واجهة، اختياري)
+
+```bash
+npm start
+```
 
 ```
 http://localhost:3000        ← شاشة المسح
 http://localhost:3000/admin.html  ← لوحة الإدارة
+```
+
+### ملاحظة عن الوحدات الأصلية (Native Modules)
+
+`better-sqlite3` و`node-hid` و`serialport` تحتاج إعادة بناء مختلفة حسب البيئة: Electron ABI عند تشغيل `npm run electron` أو `npm run dist`، أو Node ABI العادي عند `npm start`/`npm test`. بعد استخدام Electron، شغّل التالي قبل الاختبارات:
+
+```bash
+npm run rebuild:node
+npm test
 ```
 
 ## بيانات الإدارة الافتراضية

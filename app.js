@@ -2,9 +2,12 @@ import express from "express";
 import session from "express-session";
 import bcrypt from "bcryptjs";
 import Database from "better-sqlite3";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { hidAvailable, hidLoadError, listDevices, RFIDReader } from "./rfid-reader.js";
 import { serialAvailable, serialLoadError, listSerialPorts, SerialRFIDReader } from "./serial-reader.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const dbPath = process.env.DB_PATH || "attendance.db";
 const db = new Database(dbPath);
@@ -55,7 +58,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false
 }));
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "public")));
 
 function requireAuth(req, res, next) {
   if (req.session.admin) return next();
